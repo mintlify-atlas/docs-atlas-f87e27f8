@@ -1,7 +1,7 @@
 ---
-title: "mod_exelearning_get_exelearnings_by_courses"
-sidebarTitle: "get_exelearnings_by_courses"
-description: "Read function that lists mod_exelearning instances in specified courses, or all enrolled courses when none are specified. Returns warnings for inaccessible courses."
+title: "get_exelearnings_by_courses – List Course Activities"
+sidebarTitle: "List Instances"
+description: "Lists mod_exelearning instances in given courses, falling back to enrolled courses when none given. Warns on inaccessible courses rather than failing."
 ---
 
 `mod_exelearning_get_exelearnings_by_courses` returns all accessible `mod_exelearning` instances visible to the calling user in the given set of courses. When no course IDs are supplied the function automatically queries the user's enrolled courses. Courses the user cannot access produce a warning entry rather than an error, so a single inaccessible course never aborts the entire request.
@@ -32,7 +32,7 @@ description: "Read function that lists mod_exelearning instances in specified co
       The `exelearning` table row ID (the activity instance ID).
     </ResponseField>
     <ResponseField name="coursemodule" type="int">
-      The course-module ID (`cm.id`). Use this as `cmid` in other functions.
+      The course-module ID (`cm.id`). This is **not** the parameter for other API functions — those take `exelearningid` (the instance `id` field), not this `coursemodule` value.
     </ResponseField>
     <ResponseField name="course" type="int">
       ID of the course containing the activity.
@@ -76,14 +76,8 @@ description: "Read function that lists mod_exelearning instances in specified co
     <ResponseField name="grademax" type="float">
       Maximum grade value for the activity.
     </ResponseField>
-    <ResponseField name="grademin" type="float">
-      Minimum grade value (typically `0`).
-    </ResponseField>
     <ResponseField name="gradepass" type="float">
       Passing grade threshold (`0` = no pass/fail threshold set).
-    </ResponseField>
-    <ResponseField name="gradedisplaytype" type="int">
-      How the grade is displayed (Moodle grade display type constant).
     </ResponseField>
     <ResponseField name="maxattempt" type="int">
       Maximum number of attempts allowed (`0` = unlimited).
@@ -159,9 +153,7 @@ wstoken=<token>
       "gradeenabled": 1,
       "grademodel": 0,
       "grademax": 100.0,
-      "grademin": 0.0,
       "gradepass": 50.0,
-      "gradedisplaytype": 1,
       "maxattempt": 3,
       "grademethod": 1,
       "reviewmode": 6,

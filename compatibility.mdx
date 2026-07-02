@@ -1,7 +1,7 @@
 ---
-title: "Moodle and PHP Compatibility for mod_exelearning"
+title: "Moodle and PHP Compatibility Matrix for mod_exelearning"
 sidebarTitle: "Compatibility"
-description: "mod_exelearning supports Moodle 4.5 LTS through 5.2 and requires PHP 8.1+. Older Moodle releases are not supported."
+description: "mod_exelearning requires Moodle 4.5 LTS or later and PHP 8.1+. Supported through Moodle 5.2. Older releases are explicitly not supported."
 ---
 
 `mod_exelearning` targets every currently supported Moodle release from **Moodle 4.5 LTS** (the declared minimum in `version.php`: `$plugin->requires = 2024100700`) through the latest **Moodle 5.2** stable (`$plugin->supported = [405, 502]`). Older Moodle releases — including all 3.x versions and 4.0 through 4.4 — are explicitly not supported because the multi-grade-item API that the plugin depends on was only finalised in Moodle 4.5 LTS.

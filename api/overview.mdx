@@ -1,7 +1,7 @@
 ---
-title: "mod_exelearning Web Service API Overview"
+title: "mod_exelearning External API — 8 Functions Overview"
 sidebarTitle: "Overview"
-description: "8 web-service functions registered in db/services.php for the Moodle App and external clients. All mobile functions are members of MOODLE_OFFICIAL_MOBILE_SERVICE."
+description: "8 external functions in db/services.php: 6 mobile functions in MOODLE_OFFICIAL_MOBILE_SERVICE and 2 AJAX-only admin editor functions."
 ---
 
 The `mod_exelearning` plugin exposes **8 external functions** across **7 classes**, all declared in `db/services.php`. Every class in `classes/external/` is wired to at least one function, and every declared function maps to an existing class method — there are zero orphans. Functions are split into two groups with distinct security postures: six mobile/external functions accessible to the Moodle App and token clients, and two AJAX-only admin editor functions restricted to the system context.

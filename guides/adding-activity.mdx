@@ -1,7 +1,7 @@
 ---
-title: "Add an eXeLearning Resource to Your Moodle Course"
+title: "Adding an eXeLearning Resource to Your Moodle Course"
 sidebarTitle: "Adding Activity"
-description: "Step-by-step guide for teachers to add, configure, and publish an eXeLearning resource activity in a Moodle course."
+description: "Step-by-step guide for teachers to add, configure, and publish an eXeLearning resource activity in a Moodle course using the activity form."
 ---
 
 The **eXeLearning resource** activity embeds a published eXeLearning v4 package (an `.elpx` file) directly inside a Moodle course. Unlike a plain SCORM package that reports a single aggregated score, this activity inspects your package and can register **each gradable iDevice as its own gradebook column** — so a single resource containing two quizzes records two independent grades. This guide walks you through adding and configuring the activity.
@@ -39,9 +39,9 @@ The grading section is split into two sub-sections in the form: **Grading** (how
 
 | Field | Default | Description |
 |---|---|---|
-| **Graded?** (`gradeenabled`) | On | Master grading switch. When turned off, the activity creates no gradebook columns, no attempt records, and behaves like a plain resource. All other grade and attempt fields are disabled while this is unchecked. |
+| **Graded?** (`gradeenabled`) | On | Master grading switch. When turned off, the activity creates no gradebook columns, shows no attempts report, and behaves like a plain resource. Attempt history already in the database is preserved. All other grade and attempt fields are disabled while this is unchecked. |
 | **Gradebook columns** (`grademodel`) | Per iDevice | Controls whether the activity creates one column per gradable iDevice (**Per iDevice only**, the default) or a single aggregated column (**Overall only**, SCORM-style). See the [Grading guide](/guides/grading) for full details. |
-| **Maximum grade per item** (`grademax`) | `100` | The maximum score each gradebook column can reach. Applied to every per-iDevice column and the overall column alike. |
+| **Maximum grade per item** (`grademax`) | `100` | The maximum score each gradebook column can reach. Applied to every per-iDevice column (in **Per iDevice** mode) or to the single overall column (in **Overall** mode). |
 | **Minimum grade** (`grademin`) | `0` | The floor for each column. Must not exceed `grademax`. |
 | **Grade to pass** (`gradepass`) | `0` | The minimum grade a student needs to pass. When set to a non-zero value and the **Require passing grade** completion condition is enabled, the activity is automatically marked complete once the student reaches this score — SCORM-style. Must lie within `[grademin, grademax]`. Set to `0` to disable pass-based completion. |
 | **Grade display** (`gradedisplaytype`) | Default | Controls how grades are displayed in the gradebook. Options: **Default** (inherit from course), **Real** (0–100), **Percentage**, **Letter** (A, B, …), **Real and percentage**. Moodle always stores grades numerically; this setting only changes the visual format. |

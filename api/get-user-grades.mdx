@@ -1,7 +1,7 @@
 ---
-title: "mod_exelearning_get_user_grades"
-sidebarTitle: "get_user_grades"
-description: "Read function returning a user's per-iDevice gradebook grades for a mod_exelearning activity, enriched with iDevice type and name from exelearning_grade_item."
+title: "mod_exelearning_get_user_grades – Per-iDevice Grades"
+sidebarTitle: "User Grades"
+description: "Returns gradebook grades per iDevice for a user, enriched with iDevice type and name. Own grades require :view; another user requires :viewreport."
 ---
 
 `mod_exelearning_get_user_grades` returns the real gradebook grades for a user on a `mod_exelearning` activity. The response reflects the actual grade columns as stored in the Moodle gradebook via `grade_get_grades()`, enriched with each iDevice's type and display name from the `exelearning_grade_item` table. In per-iDevice grade model (`grademodel = 1`) there is one entry per iDevice; in overall mode (`grademodel = 0`) there is a single overall entry (`itemnumber = 0`).

@@ -21,6 +21,7 @@ A teacher uploads an `.elpx` (a ZIP with `content.xml`). `lib.php` stores it and
 | **URLs / UI** | `classes/local/urls.php`, `classes/local/ui/teacher_mode_hider.php` | Gradebook deep-link, grade-analysis, and navigation-before-key builders; queue the iframe teacher-toggle hider JS. |
 | **Tracking domain** | `classes/local/track.php` | Ingest tracking payloads: normalise/clamp scores, route by stable `objectid`, recompute the overall server-side, enforce attempt caps, drive completion. Single source of truth for scoring. |
 | **Attempts domain** | `classes/local/attempts.php` | Attempt numbering (session-token grouping), upsert of `exelearning_attempt`, aggregation (highest/average/first/last/lowest). |
+| **Gradebook mapping** | `classes/grades/gradeitems.php` | `itemnumber_mapping` (0 = overall, 1..100 = per-iDevice) for Moodle 5.x completion-by-grade. Implements the core interface; `strict_types`. |
 | **API boundary** | `classes/external/*` (7 classes) | Web services for the mobile app and admin AJAX editor management; each validates context, login, and capability. Fully declared in `db/services.php`. |
 | **Privacy** | `classes/privacy/provider.php` | Declares `exelearning_attempt` metadata and the `core_grades` data flow; export/delete with grade recalculation. |
 | **Backup/Restore** | `backup/moodle2/*` | Export/import instance, grade-item mappings, attempts (gated by `userinfo`), and the `intro`/`package`/`content` file areas; remap user ids. |

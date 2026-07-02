@@ -1,5 +1,5 @@
 ---
-title: "Multi-Item Gradebook Model in mod_exelearning"
+title: "Gradebook Grade Items and Aggregation in mod_exelearning"
 sidebarTitle: "Gradebook"
 description: "How mod_exelearning maps eXeLearning iDevices to Moodle grade items, implements the itemnumber_mapping interface, and handles attempt aggregation."
 ---
@@ -82,7 +82,7 @@ Aggregation logic lives in `attempts::aggregate_scaled()` (`attempts.php:279–3
 
 `gradepass` must lie in `[grademin, grademax]` (when non-zero) and `grademin` must not exceed `grademax`, otherwise "require passing grade" completion is unreachable (`err_grademinmax`, `err_gradepassrange`).
 
-**Completion by status** (`completionstatusrequired`, DEC-0052) is a custom completion rule that marks the activity complete when the user's attempt reaches a required status:
+**Completion by status** (`completionstatusrequired`, DEC-0052) is a custom completion rule that marks the activity complete when the user's attempt reaches a required status. The column was added to the `exelearning` table in upgrade stage 17 (`2026061202`):
 
 | Value | Meaning |
 |-------|---------|
@@ -102,6 +102,15 @@ When `gradeenabled=0` (the master grading switch), the module form greys out all
 - **Preserves attempt history** in `exelearning_attempt` — the rows are kept for potential re-enabling.
 
 The module behaves like a plain resource in this mode. Note that `FEATURE_GRADE_HAS_GRADE` is static — `exelearning_supports()` returns `true` unconditionally regardless of `gradeenabled`, so Moodle classifies the activity type as gradable even when a given instance is not (tracked in DEC-0047).
+
+## Worked example
+
+An `.elpx` package with **3 gradable iDevices** produces:
+
+- **PER-ITEM** (default) → **3 gradebook columns**, `itemnumber` 1, 2, 3 — one per iDevice, no overall column.
+- **OVERALL** → **1 aggregated column**, `itemnumber=0` — the three per-iDevice scores are server-recomputed into a single overall (DEC-0018) and the per-iDevice rows are kept only for the attempts report.
+
+Switching an instance between models deletes and recreates the columns and re-publishes grades from `exelearning_attempt` via `exelearning_update_grades()` → `grade_recalculator::recalculate_for_users()`.
 
 ## Admin settings reference
 

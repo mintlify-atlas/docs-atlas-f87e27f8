@@ -1,7 +1,7 @@
 ---
-title: "mod_exelearning_view_exelearning"
-sidebarTitle: "view_exelearning"
-description: "Write function that triggers the course_module_viewed event and updates activity completion, mirroring what happens when a student opens view.php."
+title: "mod_exelearning_view_exelearning – Fire View Event"
+sidebarTitle: "View Activity"
+description: "Triggers the course_module_viewed event and updates activity completion. Mirrors mod_scorm_view_scorm. Requires mod/exelearning:view capability."
 ---
 
 `mod_exelearning_view_exelearning` simulates a student opening the activity's `view.php` page. Calling it fires the `course_module_viewed` event and recalculates completion for the activity, so the Moodle App and other external clients can correctly register a view without loading the full HTML page. It mirrors the behaviour of `mod_scorm_view_scorm` and `mod_exeweb_view_exeweb`.

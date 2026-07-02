@@ -1,7 +1,7 @@
 ---
-title: "mod_exelearning_save_track"
-sidebarTitle: "save_track"
-description: "Write function that submits per-iDevice SCORM scores for the current user, using the same server-side scoring pipeline as the web track.php endpoint."
+title: "mod_exelearning_save_track – Submit Tracking Data"
+sidebarTitle: "Save Track"
+description: "Submits per-iDevice scores for the current user via the shared track::ingest() pipeline. scoreraw is nullable; omitting it is a status-only no-op."
 ---
 
 `mod_exelearning_save_track` is the web-service counterpart of `track.php`. It accepts per-iDevice scores and an optional overall SCORM status, re-shapes them into the internal payload format, and delegates entirely to the shared `track::ingest()` pipeline — so the server-side safeguards are **identical** to the browser-based `track.php` path. Only the authenticated user (`$USER`) can be graded; a client cannot submit scores on behalf of another user.

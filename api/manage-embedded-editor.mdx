@@ -1,7 +1,7 @@
 ---
-title: "Embedded Editor Admin AJAX Functions"
-sidebarTitle: "manage_embedded_editor"
-description: "Two AJAX-only admin functions for installing, updating, repairing, and checking the status of the embedded eXeLearning editor. System context only."
+title: "Manage Embedded Editor — Two Admin AJAX Endpoints"
+sidebarTitle: "Editor Admin"
+description: "Two AJAX admin functions to install, update, repair, or check status of the embedded editor. System context; requires site:config and manageembeddededitor."
 ---
 
 The `mod_exelearning` plugin exposes two admin AJAX functions — `mod_exelearning_manage_embedded_editor_action` and `mod_exelearning_manage_embedded_editor_status` — that power the in-settings editor management widget. They are not members of any Moodle external service; instead, they are called exclusively by the admin page's AMD JavaScript module (`mod_exelearning/admin_embedded_editor`) over AJAX. Both functions operate in the **system context** and require the caller to hold two capabilities simultaneously.
