@@ -1,0 +1,146 @@
+---
+title: "Development Setup, Tests, and CI for mod_exelearning"
+sidebarTitle: "Development Setup"
+description: "Run PHPUnit and Behat tests, generate code coverage, and reproduce the full moodle-plugin-ci suite locally using Docker or a manual Moodle checkout."
+---
+
+`mod_exelearning` is tested the same way core activity modules like `mod_scorm` and `mod_h5pactivity` are: PHPUnit for unit and integration tests, Behat for browser-level scenarios, and `moodle-plugin-ci` for the full linter + test pipeline that runs in CI. The plugin must live at `mod/exelearning` inside a Moodle checkout — a `moodle-plugin-ci` install does this automatically, and the bundled Docker stack mounts it there for you.
+
+## Quick start with Docker (recommended)
+
+The easiest path requires no local PHP or database setup:
+
+<Steps>
+  <Step title="Start the stack">
+    ```bash
+    make upd
+    ```
+    Starts the Moodle and database containers. Only needed once (or after `make down`).
+  </Step>
+  <Step title="Run the full plugin suite">
+    ```bash
+    make test
+    ```
+    Executes `scripts/phpunit-docker.sh` inside the `moodle` container. The first run installs Moodle's dev dependencies and initialises the PHPUnit test database (idempotent); later runs just execute the suite.
+  </Step>
+  <Step title="Target a single file or filter">
+    ```bash
+    make test ARGS=mod/exelearning/tests/track_test.php
+    ```
+  </Step>
+</Steps>
+
+## Manual PHPUnit setup
+
+To run tests inside an existing Moodle checkout:
+
+<Steps>
+  <Step title="Initialise the PHPUnit environment">
+    ```bash
+    php admin/tool/phpunit/cli/init.php
+    ```
+    Creates the test database and configures the test runner. Must be re-run whenever `db/install.xml`, `version.php`, or capabilities change.
+  </Step>
+  <Step title="Run all plugin tests">
+    ```bash
+    vendor/bin/phpunit --filter mod_exelearning
+    ```
+  </Step>
+  <Step title="Run a single test file">
+    ```bash
+    vendor/bin/phpunit mod/exelearning/tests/lib_test.php
+    vendor/bin/phpunit mod/exelearning/tests/attempts_test.php
+    vendor/bin/phpunit mod/exelearning/tests/privacy/provider_test.php
+    ```
+  </Step>
+</Steps>
+
+<Note>
+  Tests rely on the data generator in `tests/generator/lib.php`, which builds each
+  instance from the real ELPX fixture
+  `research/fixtures/elpx/actividad-evaluable.elpx` — a package with two gradable
+  iDevices: `trueorfalse` and `guess`.
+</Note>
+
+## Code coverage
+
+Coverage scope is declared in `tests/coverage.php` (the plugin's `classes/` folder plus `lib.php`), keeping reports focused on testable logic. A coverage driver (`xdebug` or `pcov`) must be enabled in the CLI PHP.
+
+```bash
+# Text summary
+make coverage
+# Equivalent from the Moodle root:
+vendor/bin/phpunit --coverage-text --filter mod_exelearning
+
+# HTML report (browse coverage/index.html afterwards):
+vendor/bin/phpunit --coverage-html coverage --filter mod_exelearning
+```
+
+<Note>
+  CI runs PHPUnit with `coverage: none` for speed. Generate coverage locally with
+  a driver enabled.
+</Note>
+
+## Behat
+
+<Steps>
+  <Step title="Initialise Behat">
+    ```bash
+    php admin/tool/behat/cli/init.php
+    ```
+    Re-run after adding or editing feature files so Behat regenerates its step cache.
+  </Step>
+  <Step title="Run plugin scenarios">
+    ```bash
+    vendor/bin/behat --tags @mod_exelearning
+    ```
+    All scenarios are tagged `@javascript` and require Chrome via Selenium.
+  </Step>
+</Steps>
+
+<Note>
+  Make sure a Selenium server with Chrome is running and reachable from the test
+  runner, or pass `--profile chrome` and configure the profile in `behat.yml`.
+</Note>
+
+## moodle-plugin-ci (full CI suite)
+
+CI runs the exact pipeline defined in `.github/workflows/ci.yml`. To reproduce it locally, install [`moodle-plugin-ci`](https://moodlehq.github.io/moodle-plugin-ci/) and run each step against the plugin:
+
+```bash
+moodle-plugin-ci phplint
+moodle-plugin-ci phpmd
+moodle-plugin-ci phpcs --max-warnings 0
+moodle-plugin-ci phpdoc --max-warnings 0
+moodle-plugin-ci validate
+moodle-plugin-ci savepoints
+moodle-plugin-ci mustache
+moodle-plugin-ci grunt --max-lint-warnings 0
+moodle-plugin-ci phpunit --fail-on-warning
+moodle-plugin-ci behat --profile chrome
+```
+
+## Packaging a release
+
+```bash
+make build-editor              # ensure the editor bundle exists in dist/static/
+make package RELEASE=4.0.0    # produces mod_exelearning-4.0.0.zip
+```
+
+The `scripts/package.sh` script uses **only `git`** — no `zip`, `rsync`, `python`, or `php` — so it works in Git Bash on Windows too. It stages the working tree (including the built editor under `dist/static/`, which is `.gitignore`d) into a throwaway index, stamps `version.php` there (`version = YYYYMMDD00`, `release = <RELEASE>`), and emits the ZIP via `git archive --format=zip`. Your real `.git` is left untouched.
+
+<Note>
+  The committed `version.php` carries the sentinel values `9999999999` / `dev`
+  (DEC-0030). Real version values are injected into the ZIP only — the working tree
+  is never modified. Releases are also built automatically by
+  `.github/workflows/release.yml` on a published GitHub release.
+</Note>
+
+## Linter exclusions
+
+| File | What it configures |
+|------|--------------------|
+| `.moodle-plugin-ci.yml` | `filter.notPaths` / `notNames` for phpcs, phpmd, phplint, phpdoc, phpcpd |
+| `.phpcs.xml.dist` | `moodle` ruleset with `dist/`, `research/`, `node_modules/`, `vendor/`, `amd/build/`, and `*.min.*` excluded |
+| `.eslintignore` / `.stylelintignore` | Used by the `grunt` step |
+| `thirdpartylibs.xml` | Declares `dist/static` (embedded editor) and the pipwerks SCORM wrappers in `assets/scorm/` as third-party code so the `validate` step does not flag them |

@@ -1,0 +1,121 @@
+---
+title: "Multi-Item Gradebook Model in mod_exelearning"
+sidebarTitle: "Gradebook"
+description: "How mod_exelearning maps eXeLearning iDevices to Moodle grade items, implements the itemnumber_mapping interface, and handles attempt aggregation."
+---
+
+`mod_exelearning` maps each gradable iDevice in a published package to a distinct Moodle grade item, enabling per-exercise visibility in the gradebook and flexible aggregation across multiple attempts. The grading model is configurable per instance, and the entire lifecycle — from package upload through user submission to completion — is driven by stable identifiers extracted from `content.xml` rather than by page order or position in the activity.
+
+## Two grading models
+
+Grading has exactly two mutually exclusive presentations, selected per instance by the `grademodel` field. The legacy "both" mode was removed in DEC-0008.
+
+| Model | Constant (value) | Gradebook columns | Overall column (`itemnumber=0`)? |
+|---|---|---|---|
+| **PER-ITEM** *(default)* | `EXELEARNING_GRADEMODEL_PERITEM` (1) | One column per gradable iDevice (`itemnumber` 1..100) | **No** |
+| **OVERALL** | `EXELEARNING_GRADEMODEL_OVERALL` (0) | A single aggregated column | **Yes** |
+
+The two models are symmetric: OVERALL shows only the aggregated column, PER-ITEM shows only the per-iDevice columns. There is no hidden overall stub in PER-ITEM — a hidden item still showed (greyed) to teachers with `moodle/grade:viewhidden` and was reported as a confusing extra grade, so DEC-0038 removed it.
+
+Switching an existing instance between the two models deletes and recreates the columns and re-publishes from `exelearning_attempt` via `exelearning_update_grades()` → `grade_recalculator::recalculate_for_users()`.
+
+## itemnumber semantics
+
+`itemnumber` is the routing axis shared by `exelearning_grade_item` and `exelearning_attempt`:
+
+- **`0`** = the overall aggregated grade (exists only in OVERALL mode).
+- **`1..100`** = one gradable iDevice each (PER-ITEM mode).
+
+Moodle 5.x can only label grade items whose `itemnumber` is declared in a component mapping. `mod_exelearning` implements `core_grades\local\gradeitem\itemnumber_mapping` in `classes/grades/gradeitems.php:52`, with `MAX_ITEMNUMBER = 100`. The mapping is `0 => 'overall'`, `1..100 => 'idevice1'..'idevice100'`.
+
+<Warning>
+  The lang strings `grade_overall_name` and `grade_idevice1_name` through
+  `grade_idevice100_name` (100 entries in `lang/en/exelearning.php`) **must all
+  exist** or the completion-via-grade dropdown and Course-overview column labelling
+  break. Registration stops at the cap — beyond 100 gradable iDevices, extra items
+  are not registered, with a developer-level `debugging()` warning.
+</Warning>
+
+## objectid-stable routing
+
+Grade items are keyed by the package's stable `objectid` (the `<odeIdeviceId>` from `content.xml`), **not** by the page-local index, which can collide across pages. The `exelearning_grade_item` table stores `objectid char(191)` with a UNIQUE `(exelearningid, objectid)` index, and `grade_sync::sync()` looks up existing rows by `objectid`, assigning a new monotonic `itemnumber` only when an objectid is first seen (DEC-0017).
+
+<CardGroup cols={3}>
+  <Card title="Soft-delete on re-upload">
+    An iDevice that disappears in a re-upload has its row marked `deleted=1`, preserving grade history, and its gradebook column is removed. A re-appearing iDevice keeps its original `itemnumber`.
+  </Card>
+  <Card title="Content-hash staleness">
+    Each row stores `contenthash` (sha1 of the iDevice content block, DEC-0021). An in-place options/scoring edit keeps the `objectid` but changes the hash, flagging it as `changed` so the teacher can be warned that existing grades may be stale. Existing attempts and grades are **not** recomputed.
+  </Card>
+  <Card title="Server-only routing">
+    `track::ingest()` accepts only objectids already registered for this instance and ignores unknown ones. It never creates grade items from client data.
+  </Card>
+</CardGroup>
+
+## Attempt aggregation
+
+Each user submission is one row per gradable item in `exelearning_attempt`, keeping full attempt history (DEC-0007). The gradebook grade for an item is aggregated across that user's attempts by the per-instance `grademethod`:
+
+| Method | Constant (value) | Behaviour |
+|---|---|---|
+| **highest** *(default)* | `attempts::GRADE_HIGHEST` (0) | `max()` of scaled scores |
+| **average** | `attempts::GRADE_AVERAGE` (1) | mean of all attempts |
+| **first** | `attempts::GRADE_FIRST` (2) | first attempt only |
+| **last** | `attempts::GRADE_LAST` (3) | most recent attempt only |
+| **lowest** | `attempts::GRADE_LOWEST` (4) | `min()` of scaled scores |
+
+Aggregation logic lives in `attempts::aggregate_scaled()` (`attempts.php:279–311`), which reads each attempt's `scaledscore` (a 0..1 value stored as `rawscore/maxscore`) and returns a single scaled score, or `null` when there are no attempts.
+
+## Grade recalculation
+
+`exelearning_recalculate_user_grades()` delegates to `grade_recalculator::recalculate_user()` (DEC-0054), which:
+
+1. Calls `attempts::aggregate_scaled()` for each registered grade item.
+2. Multiplies the scaled score by the instance `grademax` (`rawgrade = scaled × grademax`).
+3. Calls `grade_update()` per item, skipping `itemnumber=0` in PER-ITEM mode and `itemnumber>0` in OVERALL mode.
+
+`exelearning_update_grades()` fans this out across every user with attempts and short-circuits when grading is disabled.
+
+## gradepass and completion
+
+**Completion by grade** (`gradepass`, `completionpassgrade`) is Moodle-native SCORM-style completion. The teacher points `completiongradeitemnumber` at a per-iDevice item (workshop model) or uses OVERALL mode to complete on passing the activity as a whole. `track::ingest()` recalculates completion after every grading write.
+
+`gradepass` must lie in `[grademin, grademax]` (when non-zero) and `grademin` must not exceed `grademax`, otherwise "require passing grade" completion is unreachable (`err_grademinmax`, `err_gradepassrange`).
+
+**Completion by status** (`completionstatusrequired`, DEC-0052) is a custom completion rule that marks the activity complete when the user's attempt reaches a required status:
+
+| Value | Meaning |
+|-------|---------|
+| `NULL` | Rule disabled |
+| `1` (`EXELEARNING_COMPLETIONSTATUS_PASSED`) | Passed |
+| `2` (`EXELEARNING_COMPLETIONSTATUS_COMPLETED`) | Completed |
+| `3` (`EXELEARNING_COMPLETIONSTATUS_ANY`) | Passed **or** completed |
+
+`custom_completion::get_state()` returns `COMPLETION_COMPLETE` when a matching row exists in `exelearning_attempt`, else `COMPLETION_INCOMPLETE`. The rule survives backup/restore because `completionstatusrequired` is included in the backed-up instance fields.
+
+## When grading is disabled
+
+When `gradeenabled=0` (the master grading switch), the module form greys out all grade and attempt fields. The module then:
+
+- Creates **no grade items** — `grade_sync::sync()` removes all grade items via `grade_item_manager::remove_all()`.
+- **Returns early** from `exelearning_update_grades()` — no gradebook writes.
+- **Preserves attempt history** in `exelearning_attempt` — the rows are kept for potential re-enabling.
+
+The module behaves like a plain resource in this mode. Note that `FEATURE_GRADE_HAS_GRADE` is static — `exelearning_supports()` returns `true` unconditionally regardless of `gradeenabled`, so Moodle classifies the activity type as gradable even when a given instance is not (tracked in DEC-0047).
+
+## Admin settings reference
+
+All grading and attempt fields from `mod_form.php:78–227`, with defaults from `db/install.xml`:
+
+| Setting | Field | Options / range | Default |
+|---|---|---|---|
+| Graded? (master switch) | `gradeenabled` | on / off | on (1) |
+| Gradebook columns model | `grademodel` | PER-ITEM / OVERALL | PER-ITEM (1) |
+| Maximum grade (per item) | `grademax` | float | 100 |
+| Minimum grade | `grademin` | float | 0 |
+| Grade to pass | `gradepass` | float in `[grademin, grademax]`, 0 = none | 0 |
+| Grade display type | `gradedisplaytype` | DEFAULT / REAL / PERCENTAGE / LETTER / REAL_PERCENTAGE | DEFAULT (0) |
+| Grade category | `gradecat` | course grade categories | course top category (0) |
+| Maximum attempts | `maxattempt` | int, 0 = unlimited | 0 |
+| Attempt aggregation | `grademethod` | highest / average / first / last / lowest | highest (0) |
+| Attempt review | `reviewmode` | never / always / after completion | always (1) |

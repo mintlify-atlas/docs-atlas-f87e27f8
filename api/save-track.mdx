@@ -1,0 +1,188 @@
+---
+title: "mod_exelearning_save_track"
+sidebarTitle: "save_track"
+description: "Write function that submits per-iDevice SCORM scores for the current user, using the same server-side scoring pipeline as the web track.php endpoint."
+---
+
+`mod_exelearning_save_track` is the web-service counterpart of `track.php`. It accepts per-iDevice scores and an optional overall SCORM status, re-shapes them into the internal payload format, and delegates entirely to the shared `track::ingest()` pipeline — so the server-side safeguards are **identical** to the browser-based `track.php` path. Only the authenticated user (`$USER`) can be graded; a client cannot submit scores on behalf of another user.
+
+## Function details
+
+| Field | Value |
+|---|---|
+| **Function name** | `mod_exelearning_save_track` |
+| **Class::method** | `mod_exelearning\external\save_track::execute` |
+| **Type** | `write` |
+| **Service** | `MOODLE_OFFICIAL_MOBILE_SERVICE` |
+| **Capability** | `mod/exelearning:savetrack` |
+
+## Parameters
+
+<ParamField body="exelearningid" type="int" required>
+  The ID of the `exelearning` activity instance (the `id` column in the `exelearning` table, returned as `id` by `get_exelearnings_by_courses`). **This is not the course-module ID.**
+</ParamField>
+
+<ParamField body="track" type="object" required>
+  The tracking payload for this submission.
+
+  <Expandable title="track object fields">
+    <ParamField body="session" type="string" default='""'>
+      A random alphanumeric token generated once per page load to identify the current attempt. All `save_track` calls within a single content session should use the same `session` value so the server can correlate them into one attempt record. Generate a new value on each fresh load of the content.
+    </ParamField>
+
+    <ParamField body="scoreraw" type="float | null" default="null">
+      The overall raw score for this submission. **Pass `null` (or omit) for status-only updates** — when `scoreraw` is `null` the function performs a no-op rather than recording a spurious `0`-score attempt. This is intentional behaviour (DEC-0044, B6): a default of `0` would silently burn attempt slots and drag `GRADE_LAST`/`GRADE_AVERAGE` results down.
+    </ParamField>
+
+    <ParamField body="scoremax" type="float" default="100">
+      The overall maximum possible score. Used when `scoreraw` is non-null to express the submission as a fraction. Ignored when `scoreraw` is `null`.
+    </ParamField>
+
+    <ParamField body="status" type="string" default='""'>
+      The overall lesson status string. One of: `completed`, `passed`, `failed`, `incomplete`, or an empty string. Mapped to `cmi.core.lesson_status` in the SCORM pipeline.
+    </ParamField>
+
+    <ParamField body="itemscores" type="array" default="[]">
+      Array of per-iDevice score objects. Each entry scores one iDevice by its stable `objectid`. Duplicated `objectid` values within a single call are resolved last-value-wins. An `objectid` that is not registered for this activity instance is silently ignored.
+
+      <Expandable title="itemscore object fields">
+        <ParamField body="objectid" type="string" required>
+          The stable iDevice identifier from `content.xml` (`<odeIdeviceId>`). This is the routing key used by `track::ingest()` to map a score to the correct `exelearning_grade_item` row.
+        </ParamField>
+        <ParamField body="scorepct" type="float" required>
+          The iDevice score expressed as a `0..100` percentage.
+        </ParamField>
+        <ParamField body="weighted" type="float" default="0">
+          The iDevice's weight in the overall score calculation. `0` means the iDevice does not contribute to the recomputed overall.
+        </ParamField>
+      </Expandable>
+    </ParamField>
+  </Expandable>
+</ParamField>
+
+## Returns
+
+<ResponseField name="status" type="bool">
+  `true` when `track::ingest()` accepted and recorded the submission. `false` when the submission was rejected (e.g. status-only no-op, or `maxattempt` cap reached). Check `warnings` for the reason when `status` is `false`.
+</ResponseField>
+
+<ResponseField name="attempt" type="int">
+  The attempt number that was written (`1`-based). `0` when the submission was rejected and no attempt was recorded.
+</ResponseField>
+
+<ResponseField name="score" type="float">
+  The server-side overall grade after aggregation across all per-iDevice scores. This is the value written to the gradebook — the client's own overall score value is **never** trusted.
+</ResponseField>
+
+<ResponseField name="warnings" type="array">
+  Contains one warning when `maxattempt` is hit. Empty on a successful submission.
+
+  <Expandable title="Warning object fields">
+    <ResponseField name="item" type="string">
+      Always `"exelearning"` for warnings from this function.
+    </ResponseField>
+    <ResponseField name="itemid" type="int">
+      The activity instance ID.
+    </ResponseField>
+    <ResponseField name="warningcode" type="string">
+      Machine-readable code. `"maxattemptsreached"` when the attempt cap was exceeded.
+    </ResponseField>
+    <ResponseField name="message" type="string">
+      Human-readable warning message localised to the server's language.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Server-side safeguards
+
+All of the following are enforced by `track::ingest()` and apply equally to this function and to the web `track.php` path:
+
+| Safeguard | Behaviour |
+|---|---|
+| **Always grades `$USER`** | The authenticated user is always the target. No parameter can change this. |
+| **Unknown objectids ignored** | An `objectid` not registered for this activity instance is silently discarded — it does not cause an error or a spurious grade column. |
+| **Overall recomputed server-side** | The server recalculates the overall score from per-iDevice scores. The client's `scoreraw` / `scoremax` values are used for SCORM CMI bookkeeping only. |
+| **Scores clamped** | Scores are clamped to `[grademin, grademax]` as configured on the instance. |
+| **Attempt cap enforced** | When `maxattempt > 0` and the user has already reached that many attempts, the submission is rejected and a `maxattemptsreached` warning is returned. |
+| **Status-only no-op** | When `scoreraw` is `null` the submission is a no-op — no 0-score attempt row is created and no attempt slot is consumed. |
+
+<Note>
+  The web `track.php` endpoint returns HTTP `409 Conflict` when the attempt cap is reached. This function returns `status: false` with a `maxattemptsreached` warning in the `warnings` array instead — **it does not throw an exception**. Check `warnings` whenever `status` is `false`.
+</Note>
+
+## Security model
+
+The function enforces the following checks in order:
+
+1. `validate_parameters()` — sanitises all inputs.
+2. `validate_context()` — establishes the module context.
+3. `require_capability('mod/exelearning:savetrack', $context)` — the caller must hold the save-track capability.
+4. Preview mode is always disabled for web-service calls — scores are always persisted when the submission is accepted.
+
+## Example request — full submission
+
+```http
+POST {wwwroot}/webservice/rest/server.php
+Content-Type: application/x-www-form-urlencoded
+
+wstoken=<token>
+&wsfunction=mod_exelearning_save_track
+&moodlewsrestformat=json
+&exelearningid=12
+&track[session]=abc123xyz
+&track[scoreraw]=75
+&track[scoremax]=100
+&track[status]=passed
+&track[itemscores][0][objectid]=idevice-001
+&track[itemscores][0][scorepct]=80
+&track[itemscores][0][weighted]=50
+&track[itemscores][1][objectid]=idevice-002
+&track[itemscores][1][scorepct]=70
+&track[itemscores][1][weighted]=50
+```
+
+## Example response — accepted
+
+```json
+{
+  "status": true,
+  "attempt": 2,
+  "score": 75.0,
+  "warnings": []
+}
+```
+
+## Example response — attempt cap reached
+
+```json
+{
+  "status": false,
+  "attempt": 0,
+  "score": 0.0,
+  "warnings": [
+    {
+      "item": "exelearning",
+      "itemid": 12,
+      "warningcode": "maxattemptsreached",
+      "message": "The maximum number of attempts has been reached."
+    }
+  ]
+}
+```
+
+## Example — status-only commit (no score)
+
+A status-only commit is useful to report completion without submitting a score (e.g. when the content only tracks completion, not a numeric grade). Omit `scoreraw` or set it to `null`:
+
+```json
+{
+  "exelearningid": 12,
+  "track": {
+    "session": "abc123xyz",
+    "status": "completed",
+    "itemscores": []
+  }
+}
+```
+
+This call returns `status: false` (no attempt was written) and an empty `warnings` array — the no-op is silent and expected.

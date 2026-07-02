@@ -1,0 +1,217 @@
+---
+title: "Embedded Editor Admin AJAX Functions"
+sidebarTitle: "manage_embedded_editor"
+description: "Two AJAX-only admin functions for installing, updating, repairing, and checking the status of the embedded eXeLearning editor. System context only."
+---
+
+The `mod_exelearning` plugin exposes two admin AJAX functions — `mod_exelearning_manage_embedded_editor_action` and `mod_exelearning_manage_embedded_editor_status` — that power the in-settings editor management widget. They are not members of any Moodle external service; instead, they are called exclusively by the admin page's AMD JavaScript module (`mod_exelearning/admin_embedded_editor`) over AJAX. Both functions operate in the **system context** and require the caller to hold two capabilities simultaneously.
+
+<Info>
+  These are AJAX functions (`'ajax' => true`), **not** external service functions. They have no `services` key in `db/services.php` and therefore belong to no service collection. They are called by the in-settings editor management widget over AJAX and are not available to external token clients or the Moodle App.
+</Info>
+
+---
+
+## mod_exelearning_manage_embedded_editor_action
+
+Performs a lifecycle action — install, update, repair, or uninstall — on the admin-installed copy of the eXeLearning editor that lives in `moodledata`. All operations write exclusively to the moodledata directory; the Moodle code tree is never modified.
+
+| Property    | Value                                      |
+|-------------|--------------------------------------------|
+| **Type**    | `write`                                    |
+| **Class**   | `mod_exelearning\external\manage_embedded_editor` |
+| **Method**  | `execute_action`                           |
+| **Risks**   | `RISK_CONFIG \| RISK_DATALOSS`             |
+
+### Required capabilities (system context — both required)
+
+- `moodle/site:config`
+- `mod/exelearning:manageembeddededitor`
+
+Both capabilities are enforced in code at `manage_embedded_editor.php:83–84` against `context_system::instance()`. Possessing only one of the two is not sufficient.
+
+### Parameters
+
+<ParamField body="action" type="string" required>
+  The lifecycle operation to perform. Must be one of the following values:
+
+  | Value       | Behaviour |
+  |-------------|-----------|
+  | `install`   | Downloads and installs the latest release from the GitHub Releases Atom feed into `$CFG->dataroot/mod_exelearning/embedded_editor/`. Calls `install_latest()` on `embedded_editor_installer`. |
+  | `update`    | Equivalent to `install` — calls `install_latest()` over any existing copy. The old copy is replaced atomically; a backup/rollback is maintained during the operation. |
+  | `repair`    | Calls `uninstall()` to remove the existing moodledata copy, then `install_latest()` to fetch and install a clean copy. Use when the installation is corrupted. |
+  | `uninstall` | Calls `uninstall()` to remove the moodledata copy and clear the stored version metadata. The plugin falls back to the bundled editor (if available) or disables the embedded editor entirely. |
+</ParamField>
+
+### Returns
+
+<ResponseField name="success" type="boolean">
+  `true` when the action completed without error.
+</ResponseField>
+
+<ResponseField name="action" type="string">
+  Echo of the action that was performed (`install`, `update`, `repair`, or `uninstall`).
+</ResponseField>
+
+<ResponseField name="message" type="string">
+  Human-readable localised result message (e.g. `"Editor installed successfully"`).
+</ResponseField>
+
+<ResponseField name="version" type="string">
+  The installed version string after a successful `install`, `update`, or `repair` (e.g. `"3.7.0"`). Empty string when the action is `uninstall` or when the version cannot be determined.
+</ResponseField>
+
+<ResponseField name="installed_at" type="string">
+  Unix timestamp (as a string) of when the installation completed. Empty string for `uninstall` actions.
+</ResponseField>
+
+### Security notes
+
+<Warning>
+  Both `moodle/site:config` **and** `mod/exelearning:manageembeddededitor` must be held simultaneously in the **system context**. Neither capability alone is sufficient to call this function.
+</Warning>
+
+- The function resolves `context_system::instance()` and calls `require_capability()` twice — once for each capability — before any installer code runs.
+- Each install, update, or repair acquires an **atomic Moodle lock** via `lock_config::get_lock_factory('mod_exelearning')->get_lock('editor_install', 5)`. A second concurrent call that cannot acquire the lock returns a `moodle_exception` with the error code `editorinstallconcurrent` rather than proceeding.
+- The installer enforces SHA-256 integrity verification of the downloaded ZIP against the digest published by the GitHub Releases REST API (`RISK_CONFIG` is documented for this reason — the download originates from GitHub).
+- ZIP entries are validated for path traversal (zip-slip) before extraction. The PHP time limit and download timeout are both bounded by `INSTALL_LOCK_TIMEOUT = 300` seconds.
+
+### Example call (AMD JavaScript)
+
+```javascript
+import Ajax from 'core/ajax';
+
+Ajax.call([{
+    methodname: 'mod_exelearning_manage_embedded_editor_action',
+    args: { action: 'install' },
+}])[0].then((result) => {
+    console.log(result.message);   // "Editor installed successfully"
+    console.log(result.version);   // "3.7.0"
+}).catch(Notification.exception);
+```
+
+---
+
+## mod_exelearning_manage_embedded_editor_status
+
+Returns the current state of the embedded editor installation: which source is active, what version is installed, whether an install is in progress, and — when requested — whether a newer release is available on GitHub.
+
+| Property  | Value                                                             |
+|-----------|-------------------------------------------------------------------|
+| **Type**  | `read`                                                            |
+| **Class** | `mod_exelearning\external\manage_embedded_editor`                 |
+| **Method**| `get_status`                                                      |
+
+### Required capabilities (system context — both required)
+
+- `moodle/site:config`
+- `mod/exelearning:manageembeddededitor`
+
+Enforced in code at `manage_embedded_editor.php:189–190`.
+
+### Parameters
+
+<ParamField body="checklatest" type="boolean" default="false">
+  When `true`, the function queries the [GitHub Releases Atom feed](https://github.com/exelearning/exelearning/releases.atom) via `discover_latest_version()` to determine the latest available version. The result is returned in `latest_version` and compared to the currently installed moodledata version to populate `update_available`.
+
+  When `false` (the default), no outbound network request is made and `latest_version` is returned as an empty string.
+</ParamField>
+
+### Returns
+
+<ResponseField name="active_source" type="string">
+  The editor source currently in use. One of:
+
+  | Value          | Meaning |
+  |----------------|---------|
+  | `moodledata`   | The admin-installed copy in `$CFG->dataroot/mod_exelearning/embedded_editor/` is valid and active. |
+  | `bundled`      | No valid moodledata copy exists; the copy bundled with the plugin in `dist/static/` is active. |
+  | `none`         | Neither source is valid. The embedded editor is unavailable. |
+</ResponseField>
+
+<ResponseField name="moodledata_available" type="boolean">
+  Whether the admin-installed copy exists and passes the directory validation check (`index.html` present and at least one of the expected asset directories present).
+</ResponseField>
+
+<ResponseField name="moodledata_version" type="string">
+  The version string of the admin-installed editor (from plugin config `embedded_editor_version`). Empty string if none is installed or the version is unknown.
+</ResponseField>
+
+<ResponseField name="moodledata_installed_at" type="string">
+  Unix timestamp (as a string) of when the moodledata editor was installed (from plugin config `embedded_editor_installed_at`). Empty string if unavailable.
+</ResponseField>
+
+<ResponseField name="bundled_available" type="boolean">
+  Whether the bundled editor in `dist/static/` exists and passes validation.
+</ResponseField>
+
+<ResponseField name="latest_version" type="string">
+  The latest version string retrieved from the GitHub Releases Atom feed. Only populated when `checklatest` is `true` and the request succeeds. Empty string otherwise.
+</ResponseField>
+
+<ResponseField name="latest_error" type="string">
+  Error message from the GitHub version check, if the request failed. Empty string on success or when `checklatest` is `false`.
+</ResponseField>
+
+<ResponseField name="update_available" type="boolean">
+  `true` when `checklatest` is `true`, `latest_version` is non-empty, `moodledata_version` is non-empty, and `latest_version` is strictly greater than `moodledata_version` (via `version_compare`). `false` in all other cases.
+</ResponseField>
+
+<ResponseField name="installing" type="boolean">
+  `true` when the `embedded_editor_installing` config timestamp is present and the elapsed time is within the `INSTALL_LOCK_TIMEOUT` (300 seconds). Signals that an install operation is currently in progress.
+</ResponseField>
+
+<ResponseField name="install_stale" type="boolean">
+  `true` when the `embedded_editor_installing` timestamp is present but the elapsed time exceeds 300 seconds, indicating the install lock has timed out without being released. The admin UI uses this to offer a recovery option.
+</ResponseField>
+
+<ResponseField name="can_install" type="boolean">
+  `true` when the caller holds both required capabilities and no moodledata copy is currently installed.
+</ResponseField>
+
+<ResponseField name="can_update" type="boolean">
+  `true` when the caller holds both capabilities, a moodledata copy is installed, and `update_available` is `true`.
+</ResponseField>
+
+<ResponseField name="can_repair" type="boolean">
+  `true` when the caller holds both capabilities and a moodledata copy is currently installed.
+</ResponseField>
+
+<ResponseField name="can_uninstall" type="boolean">
+  `true` when the caller holds both capabilities and a moodledata copy is currently installed.
+</ResponseField>
+
+### Example call (AMD JavaScript)
+
+```javascript
+import Ajax from 'core/ajax';
+
+// Poll status and check for updates in one call.
+Ajax.call([{
+    methodname: 'mod_exelearning_manage_embedded_editor_status',
+    args: { checklatest: true },
+}])[0].then((status) => {
+    console.log(status.active_source);     // "moodledata"
+    console.log(status.moodledata_version); // "3.7.0"
+    console.log(status.update_available);  // true / false
+    console.log(status.installing);        // false
+}).catch(Notification.exception);
+```
+
+---
+
+## Source precedence
+
+The active editor is resolved by `embedded_editor_source_resolver::get_active_source()` using a fixed priority order:
+
+```
+moodledata  →  bundled  →  none
+```
+
+The admin-installed copy always takes precedence over the bundled copy. A source is only considered usable if `index.html` is present and at least one expected asset directory (`app`, `libs`, or `files`) exists. If neither source is usable, the embedded editor is disabled entirely.
+
+For the full installation lifecycle — including SHA-256 integrity checks, ZIP validation, atomic rename with rollback, and the Moodle Playground upload path — see [Embedded Editor Management](/admin/embedded-editor-management).
+
+<Note>
+  These two functions are **not available** to external token clients or the Moodle App. They have no `services` key in `db/services.php` and therefore do not belong to `MOODLE_OFFICIAL_MOBILE_SERVICE` or any other service collection. They are internal to the admin UI and callable only via Moodle's same-origin AJAX infrastructure.
+</Note>

@@ -1,0 +1,72 @@
+---
+title: "View and Manage Student Attempts in mod_exelearning"
+sidebarTitle: "Attempts Report"
+description: "Access the attempts report to review per-student attempt history, see per-iDevice scores, and delete attempts with automatic grade recalculation."
+---
+
+Every time a student works through an eXeLearning resource activity, their results are stored as an **attempt**. The attempts report gives teachers a full view of this history: who attempted the activity, how many times, what they scored on each gradable iDevice, and when each attempt was submitted. Teachers can also delete individual attempts from this report, which triggers an automatic grade recalculation for that student.
+
+## Accessing the report
+
+From the eXeLearning resource activity page, teachers see a **participation summary** banner — for example, _"3 of 5 students have attempted this activity · average 72%"_. Next to it is a **View attempts report** button that opens the full report.
+
+Accessing the report requires the `mod/exelearning:viewreport` capability, which is granted by default to the **Teacher** and **Manager** roles. Students and guests cannot access the report.
+
+If gradable iDevices were detected in the package, the activity page also shows a **Gradable iDevices detected:** banner listing each item by its label — useful for confirming that the gradebook columns match what you expect before looking at student data.
+
+## What the report shows
+
+The report lists one row per student, attempt, and grade item. Each row contains:
+
+| Column | Description |
+|---|---|
+| **User** | The student's name, linked to their Moodle profile |
+| **Attempt** | The attempt number for that student (1 = first attempt, 2 = second, and so on) |
+| **Item** | Which grade item the row refers to: **Overall** (the aggregated score, shown in Overall mode) or the label of a specific iDevice |
+| **Score** | The raw score over the maximum for that item (e.g. `8.00 / 10.00`) |
+| **Status** | The state of the attempt: **completed**, **passed**, **failed**, or **incomplete** |
+| **Submitted** | The timestamp when the attempt was last updated |
+| **Actions** | A **Delete attempt** button (see below) |
+
+In **Per iDevice** mode, each attempt row expands to show one sub-row per detected gradable iDevice, giving you a per-exercise breakdown for every attempt. In **Overall** mode, only the single aggregated row is shown.
+
+## Deleting attempts
+
+Teachers with the delete capability can remove any individual attempt directly from the report.
+
+<Steps>
+  <Step title="Locate the attempt">
+    Find the student and attempt number you want to remove in the report table.
+  </Step>
+  <Step title="Click Delete attempt">
+    Click the **Delete attempt** button in the Actions column on the student's overall row. This removes the entire attempt — all its per-iDevice rows are deleted together.
+  </Step>
+  <Step title="Confirm recalculation">
+    Moodle immediately recalculates that student's gradebook grade from the remaining attempts, applying the configured **Attempts grading method** (highest, average, first, last, or lowest). A confirmation message reads _"The attempt was deleted and the grade was recalculated."_
+  </Step>
+</Steps>
+
+<Warning>
+  Deletion is **permanent**. There is no undo. If you delete an attempt by mistake, the student can submit a new attempt (if they have not reached the attempt limit) but the deleted data cannot be recovered. Think carefully before deleting, particularly when the grading method is **First attempt** or **Highest attempt**, where a single deletion can significantly change the gradebook value.
+</Warning>
+
+## Reviewing attempts as a student
+
+Students can review their own attempt history directly on the activity page, depending on the **Students may review attempts** (`reviewmode`) setting configured by the teacher:
+
+| Setting | What students see |
+|---|---|
+| **Always** (default) | A summary of all past attempts is shown on the activity page at all times |
+| **After the activity is complete** | The summary appears only once the student has completed or passed the activity |
+| **Never** | Past attempts are never shown to students |
+
+Students always see only their own attempts — they cannot view other students' data.
+
+## Attempt limits
+
+If **Attempts allowed** (`maxattempt`) is set to a non-zero value, students cannot start new attempts once the cap is reached. When a student has used all their attempts:
+
+- The activity page shows the message _"You have used all your allowed attempts for this activity."_
+- Any submission sent after the limit is reached is rejected by the server with an **HTTP 409** (Conflict) response — the over-limit submission is never written to the gradebook.
+
+Set `maxattempt` to `0` (the default) to allow unlimited attempts. Teachers can delete an attempt from the report to free up a slot for a student who has reached the limit.

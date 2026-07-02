@@ -1,0 +1,76 @@
+---
+title: "mod_exelearning_view_exelearning"
+sidebarTitle: "view_exelearning"
+description: "Write function that triggers the course_module_viewed event and updates activity completion, mirroring what happens when a student opens view.php."
+---
+
+`mod_exelearning_view_exelearning` simulates a student opening the activity's `view.php` page. Calling it fires the `course_module_viewed` event and recalculates completion for the activity, so the Moodle App and other external clients can correctly register a view without loading the full HTML page. It mirrors the behaviour of `mod_scorm_view_scorm` and `mod_exeweb_view_exeweb`.
+
+## Function details
+
+| Field | Value |
+|---|---|
+| **Function name** | `mod_exelearning_view_exelearning` |
+| **Class::method** | `mod_exelearning\external\view_exelearning::execute` |
+| **Type** | `write` |
+| **Service** | `MOODLE_OFFICIAL_MOBILE_SERVICE` |
+| **Capability** | `mod/exelearning:view` |
+
+## Parameters
+
+<ParamField body="exelearningid" type="int" required>
+  The ID of the `exelearning` activity instance (the `id` column in the `exelearning` table, returned as `id` by `get_exelearnings_by_courses`). **This is not the course-module ID** — use the `id` field, not `coursemodule`.
+</ParamField>
+
+## Returns
+
+<ResponseField name="status" type="bool">
+  `true` when the view event was recorded and completion recalculated successfully. The function raises an exception rather than returning `false` on failure, so in practice this field is always `true` on a successful call.
+</ResponseField>
+
+<ResponseField name="warnings" type="array">
+  Empty on success. The function currently produces no warnings; the field is present for forward compatibility with the standard Moodle external API contract.
+</ResponseField>
+
+## Behaviour
+
+Calling this function is equivalent to a student navigating to `view.php?id=<cmid>` in a browser:
+
+1. `validate_parameters()` sanitises the input.
+2. The activity record and course-module are loaded from the database.
+3. `validate_context()` is called against the module context.
+4. `require_capability('mod/exelearning:view', $context)` is enforced.
+5. `exelearning_view()` is called, which fires the `\mod_exelearning\event\course_module_viewed` event and calls `completion_info::set_module_viewed()` to update activity completion.
+
+<Note>
+  Call this function **once per page load** when the Moodle App or an external client first presents the activity to the user. Calling it multiple times is harmless — Moodle deduplicates view-based completion — but unnecessary repeated calls add database load.
+</Note>
+
+## Example request
+
+```http
+POST {wwwroot}/webservice/rest/server.php
+Content-Type: application/x-www-form-urlencoded
+
+wstoken=<token>
+&wsfunction=mod_exelearning_view_exelearning
+&moodlewsrestformat=json
+&exelearningid=12
+```
+
+## Example response
+
+```json
+{
+  "status": true,
+  "warnings": []
+}
+```
+
+## Error cases
+
+| Condition | Result |
+|---|---|
+| Invalid `exelearningid` | Exception: record not found |
+| Caller lacks `mod/exelearning:view` | Exception: `require_capability` failure |
+| Activity context is not accessible | Exception: `validate_context` failure |

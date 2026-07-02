@@ -1,0 +1,90 @@
+---
+title: "Install mod_exelearning in Your Moodle Instance"
+sidebarTitle: "Installation"
+description: "Install mod_exelearning via uploaded ZIP or manual file placement. Requires Moodle 4.5 LTS or later and PHP 8.1+."
+---
+
+`mod_exelearning` can be installed in two ways: by uploading a release ZIP through Moodle's built-in plugin installer, or by extracting and placing the files manually in your Moodle directory. Both methods result in an identical installation. The **ZIP upload method is recommended** for most administrators because it is the fastest path and requires no shell access.
+
+<Warning>
+  Always install from a **release ZIP** downloaded from [GitHub Releases](https://github.com/exelearning/mod_exelearning/releases) — not from a `git clone` of the repository. Release ZIPs include the pre-built embedded eXeLearning editor under `dist/static/`. A bare git checkout does not contain the editor, so the activity will be functional but the in-Moodle authoring experience will be unavailable until you download the editor separately from the _Manage embedded editor_ settings page.
+</Warning>
+
+## Install via ZIP upload
+
+<Steps>
+  <Step title="Download the latest release ZIP">
+    Go to [https://github.com/exelearning/mod_exelearning/releases](https://github.com/exelearning/mod_exelearning/releases) and download the most recent `mod_exelearning-<version>.zip` asset. Do not use the auto-generated _Source code_ archives — use the dedicated plugin ZIP.
+  </Step>
+  <Step title="Navigate to the plugin installer">
+    Log in to your Moodle site as an administrator and go to:
+
+    **Site administration → Plugins → Install plugins**
+  </Step>
+  <Step title="Upload the ZIP">
+    Drag the downloaded ZIP onto the upload area (or click to browse) and click **Install plugin from the ZIP file**. Moodle will unpack the archive and detect the plugin type automatically. You should not be prompted for extra details unless detection fails.
+  </Step>
+  <Step title="Review the validation report and finish">
+    Moodle displays a plugin validation report listing version information and any warnings. Review the report, then click **Continue** and follow the database upgrade screens to complete the installation.
+  </Step>
+</Steps>
+
+## Install manually
+
+<Steps>
+  <Step title="Download and extract the release ZIP">
+    Download the latest `mod_exelearning-<version>.zip` from [GitHub Releases](https://github.com/exelearning/mod_exelearning/releases) and extract it locally. The archive contains a single top-level folder named `exelearning/`.
+  </Step>
+  <Step title="Place the folder in your Moodle directory">
+    Move or copy the extracted `exelearning/` folder to the `mod/` directory of your Moodle installation:
+
+    ```bash
+    cp -r exelearning/ /path/to/moodle/mod/exelearning
+    ```
+
+    After this step the plugin files should be at `{moodle}/mod/exelearning/`.
+  </Step>
+  <Step title="Trigger the database upgrade">
+    Either log in as admin and navigate to **Site administration → Notifications**, which will detect the new plugin and run its installer automatically, or trigger the upgrade from the command line:
+
+    ```bash
+    php admin/cli/upgrade.php
+    ```
+  </Step>
+</Steps>
+
+## Post-install setup
+
+After the plugin is installed, two optional steps are recommended:
+
+**Install the embedded editor.** If your release ZIP did not include the pre-built editor, or if you want to update it to a newer version, go to the plugin settings page and use the inline management widget:
+
+**Site administration → Plugins → Activity modules → eXeLearning resource → [Manage embedded editor](/admin/embedded-editor-management)**
+
+The widget downloads the latest editor release directly from GitHub (`exelearning/exelearning`) without leaving the settings page.
+
+**Seed demo content.** To populate a demo course with a sample eXeLearning activity (useful for testing the gradebook and completion features), run the seed script. With the Docker stack:
+
+```bash
+docker compose exec moodle php /var/www/html/mod/exelearning/scripts/setup_demo.php
+```
+
+Or directly on your server from the Moodle root:
+
+```bash
+php mod/exelearning/scripts/setup_demo.php
+```
+
+## Verifying the installation
+
+Once installation is complete, confirm the plugin is active:
+
+1. Go to **Site administration → Plugins → Activity modules**.
+2. Locate **eXeLearning resource** (`mod_exelearning`) in the list.
+3. Verify that the status column shows the plugin as enabled.
+
+You can also add a new activity to any course — the **eXeLearning resource** type should appear in the activity chooser.
+
+<Note>
+  The `version.php` file committed to the repository carries a sentinel version number (`9999999999`) and release string (`dev`). These values are intentional and are replaced with the real `YYYYMMDD00` version and the semantic version tag only at package time by `make package`. If you inspect `version.php` inside a release ZIP, you will see the real values; inside a git checkout you will always see the sentinel. See [DEC-0030](https://github.com/exelearning/mod_exelearning/blob/main/research/decisiones/adr/DEC-0030-version-sentinela-en-main.md) for the full rationale.
+</Note>

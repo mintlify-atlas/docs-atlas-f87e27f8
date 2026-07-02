@@ -1,0 +1,40 @@
+---
+title: "Moodle and PHP Compatibility for mod_exelearning"
+sidebarTitle: "Compatibility"
+description: "mod_exelearning supports Moodle 4.5 LTS through 5.2 and requires PHP 8.1+. Older Moodle releases are not supported."
+---
+
+`mod_exelearning` targets every currently supported Moodle release from **Moodle 4.5 LTS** (the declared minimum in `version.php`: `$plugin->requires = 2024100700`) through the latest **Moodle 5.2** stable (`$plugin->supported = [405, 502]`). Older Moodle releases — including all 3.x versions and 4.0 through 4.4 — are explicitly not supported because the multi-grade-item API that the plugin depends on was only finalised in Moodle 4.5 LTS.
+
+## Moodle compatibility
+
+| Moodle branch | Status |
+|---|---|
+| 4.5.x (LTS) | Supported — minimum required version |
+| 5.0.x | Supported · default reference image |
+| 5.1.x | Supported |
+| 5.2.x (latest stable) | Supported · covered by CI |
+
+The plugin is expected to keep working with newer Moodle releases as they appear. If you find an incompatibility on a release not listed here, please open an issue (see below).
+
+## Requirements
+
+| Component | Requirement |
+|---|---|
+| **Moodle** | 4.5 or later (`requires = 2024100700`; `supported = [405, 502]`) |
+| **PHP** | 8.1 or later (the minimum PHP version required by Moodle 4.5+) |
+| **Database** | Any database engine supported by the Moodle release in use (MySQL/MariaDB, PostgreSQL, Microsoft SQL Server) |
+| **Browser** | Any modern, evergreen browser with JavaScript enabled |
+
+## Why Moodle 4.5 is the minimum
+
+The plugin's gradebook model depends on two APIs that were introduced and stabilised in Moodle 4.5 LTS:
+
+- **`get_grade_item_names`** — the callback that tells the gradebook how many items an activity registers and what to call them. Without this hook, per-iDevice columns cannot be created.
+- **`itemnumber_mapping` interface** — used by the gradebook to associate individual `itemnumber` values with named grade items, enabling independent columns per iDevice rather than a single aggregated score.
+
+Neither API exists in Moodle 3.x or 4.0–4.4. Back-porting these capabilities would require maintaining a compatibility shim for every older API surface the plugin touches, which is not a goal of this project. Moodle 4.5 LTS has a long support window, making it a stable and appropriate baseline.
+
+<Note>
+  CI runs the full test suite (PHPUnit + Behat + `moodle-plugin-ci` linters) against all supported Moodle branches on every pull request. If you encounter a compatibility problem on any supported branch, please file an issue at [https://github.com/exelearning/mod_exelearning/issues](https://github.com/exelearning/mod_exelearning/issues) and include the Moodle version, PHP version, and database engine.
+</Note>

@@ -1,0 +1,112 @@
+---
+title: "mod_exelearning_get_exelearning_access_information"
+sidebarTitle: "get_access_information"
+description: "Read function returning the calling user's capability flags for a mod_exelearning activity. No capability gate — intentionally queries all plugin capabilities."
+---
+
+`mod_exelearning_get_exelearning_access_information` returns a `can<capname>` boolean flag for every capability defined in `mod_exelearning`. A client can call this once at startup to decide which actions to offer the user — for example, whether to show the "Save score" button (`cansavetrack`) or the grade report link (`canviewreport`). It mirrors `mod_scorm_get_scorm_access_information`.
+
+## Function details
+
+| Field | Value |
+|---|---|
+| **Function name** | `mod_exelearning_get_exelearning_access_information` |
+| **Class::method** | `mod_exelearning\external\get_exelearning_access_information::execute` |
+| **Type** | `read` |
+| **Service** | `MOODLE_OFFICIAL_MOBILE_SERVICE` |
+| **Capability** | *(none — intentional; see note below)* |
+
+## Parameters
+
+<ParamField body="exelearningid" type="int" required>
+  The ID of the `exelearning` activity instance (the `id` column in the `exelearning` table, returned as `id` by `get_exelearnings_by_courses`). **This is not the course-module ID.**
+</ParamField>
+
+## Returns
+
+Each field is a boolean (`true` / `false`) indicating whether the authenticated user holds the corresponding capability in the module's context.
+
+<ResponseField name="canview" type="bool">
+  Whether the user holds `mod/exelearning:view`. Required to open the activity at all.
+</ResponseField>
+
+<ResponseField name="canaddinstance" type="bool">
+  Whether the user holds `mod/exelearning:addinstance`. Typically `true` for teachers with editing rights.
+</ResponseField>
+
+<ResponseField name="cansavetrack" type="bool">
+  Whether the user holds `mod/exelearning:savetrack`. Required to submit scores via `save_track`.
+</ResponseField>
+
+<ResponseField name="canviewreport" type="bool">
+  Whether the user holds `mod/exelearning:viewreport`. Required to read another user's attempts or grades via `get_user_attempts` / `get_user_grades`.
+</ResponseField>
+
+<ResponseField name="canmanageembeddededitor" type="bool">
+  Whether the user holds `mod/exelearning:manageembeddededitor`. Required to use the admin editor management AJAX endpoints.
+</ResponseField>
+
+<ResponseField name="warnings" type="array">
+  Empty on success. Present for forward compatibility with the standard Moodle external API contract.
+</ResponseField>
+
+<Info>
+  **Why is there no capability gate?**
+
+  `db/services.php` declares an **empty** `capabilities` string for this function on purpose. The function's entire job is to *report* the caller's capabilities, so gating it on any single capability (such as `:view`) would return an exception — rather than a vector of `false` flags — for a user with no rights. A response of all `false` values is the correct and useful answer for an unprivileged caller.
+
+  The function still enforces `validate_parameters()` and `validate_context()`, so unauthenticated access and access outside the module's context are still rejected.
+</Info>
+
+## Example request
+
+```http
+POST {wwwroot}/webservice/rest/server.php
+Content-Type: application/x-www-form-urlencoded
+
+wstoken=<token>
+&wsfunction=mod_exelearning_get_exelearning_access_information
+&moodlewsrestformat=json
+&exelearningid=12
+```
+
+## Example response — student
+
+```json
+{
+  "canview": true,
+  "canaddinstance": false,
+  "cansavetrack": true,
+  "canviewreport": false,
+  "canmanageembeddededitor": false,
+  "warnings": []
+}
+```
+
+## Example response — teacher
+
+```json
+{
+  "canview": true,
+  "canaddinstance": true,
+  "cansavetrack": true,
+  "canviewreport": true,
+  "canmanageembeddededitor": false,
+  "warnings": []
+}
+```
+
+## Using the flags
+
+```js
+const info = await callWS('mod_exelearning_get_exelearning_access_information', {
+  exelearningid: 12,
+});
+
+if (info.cansavetrack) {
+  // Show the "Submit" button.
+}
+if (info.canviewreport) {
+  // Show the grade report link.
+}
+```

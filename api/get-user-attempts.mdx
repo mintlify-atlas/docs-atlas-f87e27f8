@@ -1,0 +1,151 @@
+---
+title: "mod_exelearning_get_user_attempts"
+sidebarTitle: "get_user_attempts"
+description: "Read function returning a user's attempt history on a mod_exelearning activity. Own attempts require :view; another user's attempts require :viewreport."
+---
+
+`mod_exelearning_get_user_attempts` returns the list of recorded attempts for a user on a `mod_exelearning` activity. Each entry represents one overall attempt (`itemnumber = 0`) with its status and score percentage. A student can read their own attempts with only `mod/exelearning:view`; reading another user's attempts additionally requires `mod/exelearning:viewreport` (typically a teacher or admin role).
+
+## Function details
+
+| Field | Value |
+|---|---|
+| **Function name** | `mod_exelearning_get_user_attempts` |
+| **Class::method** | `mod_exelearning\external\get_user_attempts::execute` |
+| **Type** | `read` |
+| **Service** | `MOODLE_OFFICIAL_MOBILE_SERVICE` |
+| **Capability** | `mod/exelearning:view` (own); additionally `mod/exelearning:viewreport` for another user |
+
+## Parameters
+
+<ParamField body="exelearningid" type="int" required>
+  The ID of the `exelearning` activity instance (the `id` column in the `exelearning` table, returned as `id` by `get_exelearnings_by_courses`). **This is not the course-module ID.**
+</ParamField>
+
+<ParamField body="userid" type="int" default="0">
+  The Moodle user ID whose attempts to retrieve. Pass `0` (or omit the parameter) to read the authenticated user's own attempts. Passing another user's ID requires `mod/exelearning:viewreport` and that user must be an active (non-deleted, non-suspended) account.
+</ParamField>
+
+## Returns
+
+<ResponseField name="attempts" type="array">
+  Array of attempt objects ordered ascending by attempt number.
+
+  <Expandable title="Attempt object fields">
+    <ResponseField name="attempt" type="int">
+      The attempt number (1-based). Attempt 1 is the first recorded submission.
+    </ResponseField>
+    <ResponseField name="status" type="string">
+      The lesson status for this attempt. One of: `completed`, `passed`, `failed`, `incomplete`.
+    </ResponseField>
+    <ResponseField name="scorepercent" type="float">
+      The overall score expressed as a `0..100` percentage (scaled score × 100, rounded to 5 decimal places).
+    </ResponseField>
+    <ResponseField name="timecreated" type="int">
+      Unix timestamp of when this attempt was first created.
+    </ResponseField>
+    <ResponseField name="timemodified" type="int">
+      Unix timestamp of the last update to this attempt.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="grademethod" type="int">
+  The attempt aggregation method configured for this activity instance (e.g. highest, average, first, last). Useful for presenting grade calculation context to the user.
+</ResponseField>
+
+<ResponseField name="maxattempt" type="int">
+  The maximum number of attempts allowed (`0` = unlimited). Compare `attempts.length` against this value to know whether the user can still submit.
+</ResponseField>
+
+<ResponseField name="warnings" type="array">
+  Empty on success. Present for forward compatibility.
+</ResponseField>
+
+## Security model
+
+<Warning>
+  Reading **another user's** attempts requires **both**:
+
+  1. `mod/exelearning:viewreport` in the module context.
+  2. The target user must pass `core_user::require_active_user()` — deleted or suspended accounts cannot be queried.
+
+  Attempting to read another user's attempts without `:viewreport` results in a capability exception, not an empty array.
+</Warning>
+
+The security checks applied in order are:
+
+1. `validate_parameters()` — sanitises inputs.
+2. `validate_context()` — establishes the module context.
+3. `require_capability('mod/exelearning:view', $context)` — base access check.
+4. `core_user::require_active_user($user)` — target user must be active.
+5. If `userid != $USER->id`: `require_capability('mod/exelearning:viewreport', $context)`.
+
+## Example request — own attempts
+
+```http
+POST {wwwroot}/webservice/rest/server.php
+Content-Type: application/x-www-form-urlencoded
+
+wstoken=<token>
+&wsfunction=mod_exelearning_get_user_attempts
+&moodlewsrestformat=json
+&exelearningid=12
+```
+
+## Example request — another user's attempts (teacher)
+
+```http
+POST {wwwroot}/webservice/rest/server.php
+Content-Type: application/x-www-form-urlencoded
+
+wstoken=<teacher-token>
+&wsfunction=mod_exelearning_get_user_attempts
+&moodlewsrestformat=json
+&exelearningid=12
+&userid=99
+```
+
+## Example response
+
+```json
+{
+  "attempts": [
+    {
+      "attempt": 1,
+      "status": "failed",
+      "scorepercent": 40.0,
+      "timecreated": 1711900000,
+      "timemodified": 1711900500
+    },
+    {
+      "attempt": 2,
+      "status": "passed",
+      "scorepercent": 75.0,
+      "timecreated": 1711950000,
+      "timemodified": 1711950800
+    }
+  ],
+  "grademethod": 1,
+  "maxattempt": 3,
+  "warnings": []
+}
+```
+
+## Checking whether a user has attempts remaining
+
+```js
+const result = await callWS('mod_exelearning_get_user_attempts', {
+  exelearningid: 12,
+});
+
+const attemptsUsed = result.attempts.length;
+const attemptsLeft =
+  result.maxattempt === 0
+    ? Infinity
+    : result.maxattempt - attemptsUsed;
+
+if (attemptsLeft <= 0) {
+  // Hide the "Start attempt" button.
+}
+```

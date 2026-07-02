@@ -1,0 +1,129 @@
+---
+title: "mod_exelearning_get_user_grades"
+sidebarTitle: "get_user_grades"
+description: "Read function returning a user's per-iDevice gradebook grades for a mod_exelearning activity, enriched with iDevice type and name from exelearning_grade_item."
+---
+
+`mod_exelearning_get_user_grades` returns the real gradebook grades for a user on a `mod_exelearning` activity. The response reflects the actual grade columns as stored in the Moodle gradebook via `grade_get_grades()`, enriched with each iDevice's type and display name from the `exelearning_grade_item` table. In per-iDevice grade model (`grademodel = 1`) there is one entry per iDevice; in overall mode (`grademodel = 0`) there is a single overall entry (`itemnumber = 0`).
+
+## Function details
+
+| Field | Value |
+|---|---|
+| **Function name** | `mod_exelearning_get_user_grades` |
+| **Class::method** | `mod_exelearning\external\get_user_grades::execute` |
+| **Type** | `read` |
+| **Service** | `MOODLE_OFFICIAL_MOBILE_SERVICE` |
+| **Capability** | `mod/exelearning:view` (own); additionally `mod/exelearning:viewreport` for another user |
+
+## Parameters
+
+<ParamField body="exelearningid" type="int" required>
+  The ID of the `exelearning` activity instance (the `id` column in the `exelearning` table, returned as `id` by `get_exelearnings_by_courses`). **This is not the course-module ID.**
+</ParamField>
+
+<ParamField body="userid" type="int" default="0">
+  The Moodle user ID whose grades to retrieve. Pass `0` (or omit the parameter) to read the authenticated user's own grades. Passing another user's ID requires `mod/exelearning:viewreport` and that user must be an active account.
+</ParamField>
+
+## Returns
+
+<ResponseField name="grades" type="array">
+  Array of grade objects, one per gradebook column. In per-iDevice mode there is one object per iDevice; in overall mode there is exactly one object with `itemnumber = 0`.
+
+  <Expandable title="Grade object fields">
+    <ResponseField name="itemnumber" type="int">
+      `0` for the overall grade column; positive integers identify individual iDevice columns in per-iDevice mode.
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      The gradebook column name. In per-iDevice mode this is the iDevice's display name from `exelearning_grade_item`; in overall mode it is the activity name.
+    </ResponseField>
+    <ResponseField name="idevicetype" type="string">
+      The iDevice type slug (e.g. `"cloze"`, `"multichoice"`). Empty string for the overall column (`itemnumber = 0`).
+    </ResponseField>
+    <ResponseField name="grademax" type="float">
+      The maximum grade value for this column as configured in the gradebook.
+    </ResponseField>
+    <ResponseField name="grade" type="float">
+      The user's actual grade value. **Absent when the user has not yet been graded on this column.**
+    </ResponseField>
+    <ResponseField name="percent" type="float">
+      The grade expressed as a `0..100` percentage (`grade / grademax * 100`, rounded to 5 decimal places). **Absent when the user has not yet been graded on this column.** `0.0` when `grademax` is `0`.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="warnings" type="array">
+  Empty on success. Present for forward compatibility.
+</ResponseField>
+
+## Security model
+
+<Warning>
+  Reading **another user's** grades requires **both**:
+
+  1. `mod/exelearning:viewreport` in the module context.
+  2. The target user must pass `core_user::require_active_user()` — deleted or suspended accounts cannot be queried.
+
+  Attempting to read another user's grades without `:viewreport` results in a capability exception.
+</Warning>
+
+The security checks applied in order are:
+
+1. `validate_parameters()` — sanitises inputs.
+2. `validate_context()` — establishes the module context.
+3. `require_capability('mod/exelearning:view', $context)` — base access check.
+4. `core_user::require_active_user($user)` — target user must be active.
+5. If `userid != $USER->id`: `require_capability('mod/exelearning:viewreport', $context)`.
+
+## Relationship to get_user_attempts
+
+`get_user_grades` reads from the **gradebook** (the `grade_grades` table via `grade_get_grades()`), which reflects the aggregated grade calculated from all attempts according to the `grademethod` setting. `get_user_attempts` reads from the **attempt log** (`exelearning_attempt` table), which contains every individual submission. Use `get_user_grades` to show the final grade; use `get_user_attempts` to show the attempt history.
+
+## Example request — own grades
+
+```http
+POST {wwwroot}/webservice/rest/server.php
+Content-Type: application/x-www-form-urlencoded
+
+wstoken=<token>
+&wsfunction=mod_exelearning_get_user_grades
+&moodlewsrestformat=json
+&exelearningid=12
+```
+
+## Example response — per-iDevice mode
+
+```json
+{
+  "grades": [
+    {
+      "itemnumber": 0,
+      "name": "Introduction to HTML",
+      "idevicetype": "",
+      "grademax": 100.0,
+      "grade": 80.0,
+      "percent": 80.0
+    },
+    {
+      "itemnumber": 1,
+      "name": "Fill in the blanks",
+      "idevicetype": "cloze",
+      "grademax": 10.0,
+      "grade": 8.0,
+      "percent": 80.0
+    },
+    {
+      "itemnumber": 2,
+      "name": "Multiple choice quiz",
+      "idevicetype": "multichoice",
+      "grademax": 10.0
+    }
+  ],
+  "warnings": []
+}
+```
+
+<Note>
+  The second iDevice (`itemnumber: 2`) has no `grade` or `percent` field because the user has not yet been graded on that column. Always check for the presence of `grade` before displaying a score.
+</Note>

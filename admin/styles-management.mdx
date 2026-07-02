@@ -1,0 +1,73 @@
+---
+title: "Manage eXeLearning Style Packages"
+sidebarTitle: "Styles Management"
+description: "Upload custom eXeLearning style packages, control which styles are available in the embedded editor, and restrict style imports from uploaded .elpx files."
+---
+
+The plugin supports custom eXeLearning style packages, giving administrators full control over which visual themes are available to teachers when they create or edit `.elpx` content in the embedded editor. Styles can be uploaded as `.zip` packages, and the built-in styles that ship with the editor can be enabled or disabled site-wide. An additional setting lets administrators prevent teachers from importing arbitrary styles bundled inside uploaded `.elpx` files.
+
+## Styles Admin Page
+
+The Styles manager page lists all uploaded style packages and provides per-package management actions. You can reach it from the plugin settings page or directly at:
+
+```
+{wwwroot}/mod/exelearning/admin/styles.php
+```
+
+<Note>
+  Accessing the Styles admin page requires the `mod/exelearning:manageembeddededitor`
+  capability in the system context. This capability is granted to the **Manager**
+  role by default.
+</Note>
+
+## Uploading a Style Package
+
+<Steps>
+  <Step title="Open the Plugin Settings Page">
+    Navigate to **Site administration → Plugins → Activity modules → eXeLearning resource**, or go directly to:
+    ```
+    {wwwroot}/admin/settings.php?section=modsettingexelearning
+    ```
+  </Step>
+  <Step title="Locate the Styles Section">
+    Scroll to the **Styles** section on the settings page. A file manager widget labelled **Style packages** is displayed.
+  </Step>
+  <Step title="Upload the ZIP File">
+    Upload a `.zip` style package using the file manager. Only `.zip` files are accepted; the maximum upload size is enforced by the plugin's `styles_service::get_max_zip_size()` limit.
+  </Step>
+  <Step title="Save Changes">
+    Click **Save changes**. The package is validated and installed automatically. On success, the style appears in the uploaded styles list and becomes available in the embedded editor's style picker.
+  </Step>
+</Steps>
+
+## Built-In Editor Styles
+
+The eXeLearning editor ships with a set of built-in visual styles. The plugin exposes toggles for each built-in style so administrators can enable or disable them site-wide.
+
+<Tip>
+  Disabling a built-in style that is already in use by an existing `.elpx` package
+  does not modify the package itself — it only hides the style from the picker when
+  creating new content or editing existing content in the embedded editor.
+</Tip>
+
+## Restricting `.elpx`-Bundled Style Imports
+
+A dedicated checkbox setting — **Block style imports from `.elpx` files** (`stylesblockimport`) — controls whether the plugin honours style packages embedded inside an uploaded `.elpx`.
+
+| Setting | Behaviour |
+|---|---|
+| **Unchecked** (default) | Styles bundled inside an `.elpx` package are imported and made available alongside site-managed styles. |
+| **Checked** | The plugin ignores any styles bundled inside `.elpx` packages. Teachers cannot introduce arbitrary styles through the package upload flow. |
+
+<Warning>
+  Enabling this restriction affects all activities site-wide. Teachers will see
+  only the styles explicitly enabled by administrators — styles bundled in their
+  `.elpx` files will be silently ignored. Communicate this policy to your teaching
+  staff before enabling it.
+</Warning>
+
+## Required Capability
+
+All style management actions — uploading packages, toggling built-in styles, and modifying the block-import setting — require:
+
+- `mod/exelearning:manageembeddededitor` (system context)

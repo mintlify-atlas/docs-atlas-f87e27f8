@@ -1,0 +1,80 @@
+---
+title: "Migrate Activities from mod_exeweb or mod_exescorm"
+sidebarTitle: "Migration"
+description: "Use the migration tool to bulk-convert existing mod_exeweb or mod_exescorm activities to mod_exelearning, preserving course structure and settings."
+---
+
+If your Moodle site has existing activities from the sibling plugins `mod_exeweb` (a read-only eXeLearning viewer that preserves native navigation but does not grade) or `mod_exescorm` (a SCORM player with eXeLearning extensions that grades into a single aggregated column), the migration tool can bulk-convert them to `mod_exelearning`. The converted activities keep eXeLearning's native sidebar navigation **and** gain independent per-iDevice gradebook columns.
+
+<Note>
+  The migration tool only appears in the plugin settings and admin navigation when
+  `mod_exeweb` **or** `mod_exescorm` is installed on the same Moodle instance.
+  If neither sibling plugin is present, the migration page is not registered and
+  the link does not appear.
+</Note>
+
+## Accessing the Migration Tool
+
+Navigate to the migration tool directly at:
+
+```
+{wwwroot}/mod/exelearning/admin/migrate.php
+```
+
+Or follow the **Migration tool** link from the plugin settings page at **Site administration → Plugins → Activity modules → eXeLearning resource**.
+
+<Note>
+  Accessing the migration tool requires the `mod/exelearning:migrate` capability
+  in the system context. This capability is granted to the **Manager** role by default.
+</Note>
+
+## What Migration Does
+
+The migration tool performs a bulk conversion of selected activity instances from `mod_exeweb` or `mod_exescorm` to `mod_exelearning`. For each converted activity:
+
+<Steps>
+  <Step title="Activity Instance Converted">
+    The course module record and activity instance are converted from the source plugin type to `mod_exelearning`. The activity entry in each course remains in place at the same position in the course structure.
+  </Step>
+  <Step title=".elpx Package Preserved">
+    The existing `.elpx` package file associated with the activity is carried over to the new `mod_exelearning` instance. No re-upload or re-packaging is required.
+  </Step>
+  <Step title="Gradebook Columns Created">
+    The plugin parses `content.xml` in the `.elpx` package, detects gradable iDevices, and creates the corresponding gradebook columns (`itemnumber = 1..N`). Each gradable iDevice gets its own independent column — the per-iDevice model that `mod_exelearning` is built around.
+  </Step>
+  <Step title="Course Module Settings Maintained">
+    Visibility, group mode, availability conditions, and other course module settings are preserved from the original activity.
+  </Step>
+</Steps>
+
+## What Migration Does NOT Do
+
+<Warning>
+  Review these limitations carefully before running a bulk migration, especially
+  on courses with graded student work.
+</Warning>
+
+| Limitation | Detail |
+|---|---|
+| **Historical attempt and grade data** | Attempt records and grade history from `mod_exescorm` are **not** migrated. The data models are incompatible (`mod_exescorm` stores a single aggregated grade; `mod_exelearning` stores per-iDevice scores per attempt). |
+| **Legacy `.elp` packages** | Only `.elpx` / ODE 2.0 packages are supported. Legacy eXeLearning 1.x `.elp` packages cannot be converted. |
+| **`mod_exeweb` grade data** | `mod_exeweb` is a read-only viewer with no grading; there is no grade data to migrate from it. |
+
+## Before You Migrate
+
+<Warning>
+  **Always create a full course backup before running a bulk migration.** Migration
+  modifies activity instances in place. If you need to test the outcome, restore
+  the course backup to a separate test course and run the migration there first.
+</Warning>
+
+The recommended pre-migration checklist:
+
+1. **Back up** every course that contains activities to be migrated (_Course administration → Backup_).
+2. **Restore** the backup to a staging course and run a test migration to verify the results.
+3. **Communicate** to teachers that grade history from `mod_exescorm` activities will not be carried over.
+4. **Schedule** the migration during a maintenance window if the number of activities is large.
+
+## Required Capability
+
+- `mod/exelearning:migrate` (system context)

@@ -1,0 +1,60 @@
+---
+title: "Edit eXeLearning Packages In-Place with the Embedded Editor"
+sidebarTitle: "Embedded Editor"
+description: "Use the embedded eXeLearning editor inside Moodle to modify .elpx packages and save changes back to the activity without leaving Moodle."
+---
+
+The embedded eXeLearning editor lets teachers modify an activity's `.elpx` package **without leaving Moodle**. Instead of downloading the package, editing it in the desktop app, and re-uploading it, you open a full-screen eXeLearning editor directly on the activity page, make your changes, and click **Save to Moodle** — the plugin handles everything else: re-extracting the package, re-scanning for gradable iDevices, and updating the gradebook columns accordingly.
+
+<Note>
+  The embedded editor must be installed by a site administrator before teachers can use it. If you do not see the **Edit with eXeLearning** button, ask your administrator to install the editor from [Site administration → Plugins → Activity modules → eXeLearning resource](/admin/embedded-editor-management). See the [Troubleshooting](#troubleshooting) section below for details.
+</Note>
+
+## Editing a package in-place
+
+<Steps>
+  <Step title="Open the activity">
+    Navigate to the eXeLearning resource activity in your course. You must be viewing it as a **teacher** or **editing teacher** — or any role that holds the `moodle/course:manageactivities` capability.
+  </Step>
+  <Step title="Click Edit with eXeLearning">
+    Click the **Edit with eXeLearning** button that appears near the top of the activity page. This button is visible only when the embedded editor is installed and you have the `moodle/course:manageactivities` capability. It does not appear for students or guests.
+  </Step>
+  <Step title="Work in the editor">
+    The eXeLearning editor opens in a full-screen modal with your current package already loaded. You can add, edit, or remove iDevices and pages, adjust content, and change styles — the full eXeLearning authoring experience.
+  </Step>
+  <Step title="Save your changes">
+    When you are finished, click **Save to Moodle** inside the editor. The editor writes the updated `.elpx` back to the activity and closes the modal.
+  </Step>
+</Steps>
+
+## What Save to Moodle does
+
+Clicking **Save to Moodle** triggers the same pipeline as uploading a new package through the activity settings form:
+
+1. **Package re-extraction** — the updated `.elpx` is unpacked and stored in Moodle's file system, replacing the previous version.
+2. **iDevice re-detection** — `content.xml` is re-scanned for gradable iDevices.
+3. **Gradebook column update** — columns are reconciled with the new package:
+   - **New iDevices** (not present in the previous version) are assigned a new `itemnumber` and a new gradebook column is created.
+   - **Removed iDevices** are soft-deleted: the column is removed from the gradebook, but all existing grade history is preserved in the database — it is never discarded.
+   - **Unchanged iDevices** (same object ID, same content) keep their existing columns and grades untouched.
+
+You do not need to visit the activity settings or touch the gradebook manually after saving.
+
+<Warning>
+  If you edit an iDevice **in-place** — keeping the same object ID but changing its questions, options, or scoring — the plugin detects the content change and displays a staleness warning on the activity page. Existing student grades for that iDevice are **not** automatically recalculated, because scoring runs entirely in the student's browser and the server cannot re-derive past scores from the updated content. Affected students should be asked to re-attempt the activity if their grades need to reflect the new content.
+</Warning>
+
+## Troubleshooting
+
+**The Edit with eXeLearning button does not appear.**
+
+There are two common causes:
+
+<CardGroup cols={2}>
+  <Card title="Editor not installed" icon="circle-xmark">
+    The embedded editor has not been installed on this Moodle site, or it was removed. Ask your site administrator to install it from **Site administration → Plugins → Activity modules → eXeLearning resource**. Installing from an official release ZIP usually bundles a working editor, so it may already be available — the admin page shows whether an installed copy is present.
+  </Card>
+  <Card title="Insufficient capability" icon="lock">
+    The button only appears for users who hold the `moodle/course:manageactivities` capability. If you are viewing the activity with a role that does not include this capability (for example, if you have been temporarily switched to a Student role), the button will not appear. Return to your normal teacher role and reload the page.
+  </Card>
+</CardGroup>

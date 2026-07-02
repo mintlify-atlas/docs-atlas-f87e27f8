@@ -1,0 +1,70 @@
+---
+title: "Site-Wide Configuration for mod_exelearning"
+sidebarTitle: "Site Settings"
+description: "Configure mod_exelearning globally from Site administration. Covers the embedded editor widget, style management, and migration tool availability."
+---
+
+All plugin settings for `mod_exelearning` live on a single admin page, keeping configuration in one place and avoiding scattered sub-menus. From here, administrators can install or update the embedded eXeLearning editor, manage custom style packages, and (when sibling plugins are present) access the bulk migration tool.
+
+## Navigating to the Settings Page
+
+Go to **Site administration → Plugins → Activity modules → eXeLearning resource**, or navigate directly using the URL:
+
+```
+{wwwroot}/admin/settings.php?section=modsettingexelearning
+```
+
+## Settings Page Sections
+
+The settings page is divided into the following sections.
+
+### 1. Embedded Editor Management
+
+This inline widget lets you install, update, repair, or uninstall the embedded eXeLearning v4 editor without leaving the settings page. The editor release is downloaded directly from GitHub (`exelearning/exelearning`) and verified before installation.
+
+<Note>
+  Accessing this widget requires **both** the `moodle/site:config` capability and
+  the `mod/exelearning:manageembeddededitor` capability in the system context.
+</Note>
+
+See [Editor Management](/admin/embedded-editor-management) for the full install and update reference.
+
+### 2. Styles
+
+The Styles section of the settings page provides:
+
+- **Style package upload** — upload a `.zip` style package; it becomes available immediately in the embedded editor's style picker.
+- **Uploaded styles list** — enable, disable, or delete previously uploaded packages.
+- **Built-in editor styles** — toggle the styles that ship with the eXeLearning editor.
+- **Block `.elpx`-bundled style imports** — a checkbox that prevents teachers from importing arbitrary styles bundled inside an uploaded `.elpx` package.
+
+## Additional Admin Pages
+
+Two supplementary pages are linked from the settings page (and registered in the Moodle admin tree).
+
+<CardGroup cols={2}>
+  <Card title="Styles Manager" icon="palette" href="/admin/styles-management">
+    Lists all uploaded style packages with per-package enable/disable/delete
+    actions. Navigate directly at `{wwwroot}/mod/exelearning/admin/styles.php`.
+    Requires `mod/exelearning:manageembeddededitor`.
+  </Card>
+  <Card title="Migration Tool" icon="arrow-right-arrow-left" href="/admin/migration">
+    Bulk-migrate activities from `mod_exeweb` or `mod_exescorm` to
+    `mod_exelearning`. Navigate directly at
+    `{wwwroot}/mod/exelearning/admin/migrate.php`. **Only appears** when
+    `mod_exeweb` or `mod_exescorm` is installed on the same Moodle instance.
+    Requires `mod/exelearning:migrate`.
+  </Card>
+</CardGroup>
+
+## Required Capabilities
+
+| Capability | Purpose | Default role |
+|---|---|---|
+| `mod/exelearning:manageembeddededitor` | Install / update / repair / uninstall the embedded editor and manage style packages | Manager |
+| `mod/exelearning:migrate` | Access the migration tool to bulk-convert `mod_exeweb` / `mod_exescorm` activities | Manager |
+
+<Tip>
+  Both capabilities are granted to the **Manager** role by default. Site
+  administrators implicitly have `moodle/site:config` and all plugin capabilities.
+</Tip>

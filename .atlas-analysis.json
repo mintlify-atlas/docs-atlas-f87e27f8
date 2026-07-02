@@ -1,0 +1,107 @@
+{
+  "projectType": "general",
+  "projectName": "eXeLearning for Moodle",
+  "projectDescription": "A Moodle activity module that embeds eXeLearning v4 packages with native navigation, per-iDevice gradebook columns, an in-browser embedded editor, and a full web-service API for the Moodle App.",
+  "theme": "palm",
+  "primaryColor": "#1A6B9A",
+  "lightColor": "#E8F4FB",
+  "darkColor": "#0D3D5C",
+  "navigation": {
+    "tabs": [
+      {
+        "tab": "Documentation",
+        "groups": [
+          {
+            "group": "Get Started",
+            "pages": [
+              "introduction",
+              "quickstart",
+              "installation",
+              "compatibility"
+            ]
+          },
+          {
+            "group": "For Teachers",
+            "pages": [
+              "guides/adding-activity",
+              "guides/embedded-editor",
+              "guides/grading",
+              "guides/attempts-report",
+              "guides/preview"
+            ]
+          },
+          {
+            "group": "For Administrators",
+            "pages": [
+              "admin/site-settings",
+              "admin/embedded-editor-management",
+              "admin/styles-management",
+              "admin/migration"
+            ]
+          },
+          {
+            "group": "Developer Guide",
+            "pages": [
+              "developer/architecture",
+              "developer/elpx-package",
+              "developer/tracking-pipeline",
+              "developer/gradebook",
+              "developer/privacy-backup",
+              "developer/development-setup"
+            ]
+          }
+        ]
+      },
+      {
+        "tab": "API Reference",
+        "groups": [
+          {
+            "group": "Web Services",
+            "pages": [
+              "api/overview",
+              "api/get-exelearnings-by-courses",
+              "api/view-exelearning",
+              "api/get-access-information",
+              "api/get-user-attempts",
+              "api/get-user-grades",
+              "api/save-track"
+            ]
+          },
+          {
+            "group": "Admin AJAX",
+            "pages": [
+              "api/manage-embedded-editor"
+            ]
+          }
+        ]
+      }
+    ]
+  },
+  "keyFeatures": [
+    "Embed eXeLearning v4 (.elpx) packages inside Moodle with native sidebar navigation preserved",
+    "Per-iDevice gradebook columns — one column per gradable exercise, or a single aggregated overall",
+    "In-browser embedded eXeLearning editor with postMessage save-to-Moodle bridge",
+    "Multi-attempt support with configurable aggregation (highest, average, first, last, lowest)",
+    "SCORM 1.2 window.API shim for score reporting from unmodified eXeLearning exports",
+    "Full Moodle App web-service API (MOODLE_OFFICIAL_MOBILE_SERVICE)",
+    "GDPR-compliant privacy provider with attempt export and deletion + grade recalculation",
+    "Backup and restore support including grade-item mappings and attempt history",
+    "Completion by passing grade (SCORM-style) and custom completion by attempt status",
+    "Secure XML parsing with XXE and billion-laughs defences",
+    "Migration tool from mod_exeweb / mod_exescorm sibling plugins"
+  ],
+  "publicApiSurface": [
+    "mod_exelearning_get_exelearnings_by_courses",
+    "mod_exelearning_view_exelearning",
+    "mod_exelearning_get_exelearning_access_information",
+    "mod_exelearning_get_user_attempts",
+    "mod_exelearning_get_user_grades",
+    "mod_exelearning_save_track",
+    "mod_exelearning_manage_embedded_editor_action",
+    "mod_exelearning_manage_embedded_editor_status",
+    "track::ingest() — shared scoring pipeline",
+    "grade_sync::sync() — grade-item synchronisation",
+    "embedded_editor_installer — install/update/repair/uninstall editor",
+    "package::detect_gradable_idevices() — iDevice detection from content.xml"
+  ]
+}

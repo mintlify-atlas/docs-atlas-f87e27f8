@@ -1,0 +1,119 @@
+---
+title: "ELPX Package Structure, Parsing, and iDevice Detection"
+sidebarTitle: "ELPX Package"
+description: "How mod_exelearning validates .elpx uploads, reads content.xml, detects gradable iDevices, and defends against XXE and entity-expansion XML attacks."
+---
+
+Every activity in `mod_exelearning` is backed by an `.elpx` file — the native export format of eXeLearning v4. This page documents how the plugin validates the uploaded archive, parses its `content.xml` manifest, decides which iDevices are gradable, and hardens the XML parser against hostile inputs. Parsing logic lives in `classes/local/package.php`; save and extraction in `classes/local/package_manager.php`; submit-time validation in `mod_form.php`.
+
+## Package structure
+
+An `.elpx` is a **ZIP archive** (ODE 2.0, eXeLearning v4) with a `content.xml` entry at the archive root — the proprietary manifest that every v4 export contains. The upload is accepted as **`.elpx` OR `.zip`**; the genuine marker is `content.xml` inside the archive, not the file extension (DEC-0027).
+
+<Note>
+  Legacy `.elp` packages and `iteexe_online` exports are **not** supported. Only
+  ODE 2.0 packages with a root `content.xml` are accepted.
+</Note>
+
+## Validation pipeline
+
+Each upload passes through four sequential gates before the activity is created or updated:
+
+| Step | Where | Behaviour |
+|------|-------|-----------|
+| **Submit-time validation** | `mod_form.php:345–357` | The uploaded draft must contain `content.xml`; otherwise the form rejects it with `err_nocontentxml` instead of creating a broken activity (DEC-0027). |
+| **`content.xml` presence check** | `package_manager::validate_content_xml()` | Lists the zip entries and returns `true` only when a root `content.xml` exists. |
+| **Save + extract** | `package_manager::save_and_extract()` | Stores the zip in the `package` filearea and extracts to `content/{revision}/`; injects the SCORM loader and patches save guards. |
+| **Idempotent re-extract** | `package_manager::extract_stored()` | Clears prior content, re-extracts via Moodle's file packer, re-injects the SCORM loader, and patches save guards. |
+
+Extraction uses Moodle's `get_file_packer('application/zip')` and `stored_file::extract_to_storage()`. The packer normalises entry paths, so a crafted `../` zip entry cannot escape the extraction directory — path traversal prevention is the packer's responsibility, not re-implemented here.
+
+## Reading content.xml
+
+`package::read_content_xml()` (`package.php:572–590`) extracts the zip to a request directory and reads the root `content.xml`. Parsing is **hybrid** (DEC-0039) to handle the full range of real-world eXeLearning exports:
+
+<Steps>
+  <Step title="Primary path — DOMDocument">
+    `detect_gradable_idevices()` (`package.php:116–132`) loads the XML via `load_dom()` (`package.php:151–187`), then `detect_from_dom()` (`package.php:204–258`) traverses by **local name** with XPath:
+
+    ```
+    //*[local-name()="odePageId" or local-name()="pageName" or local-name()="odeIdeviceId"]
+    ```
+
+    Using `local-name()` means a namespace prefix cannot hide a marker. Each `odeIdeviceId` is attributed to the most recent page id in document order, and its content region is collected by `collect_region()` (`package.php:273–298`).
+  </Step>
+  <Step title="Fallback — controlled regex scan">
+    When the XML is **not well-formed**, `load_dom()` returns `null` after logging the first libxml error via `debugging()` (`package.php:160–172`). `detect_gradable_idevices_regex()` (`package.php:478–533`) then walks the manifest as a flat token stream by byte offset. This is a resilience path for odd or corrupt exports only.
+  </Step>
+</Steps>
+
+## Detecting gradable iDevices
+
+Detection is driven by the author's per-iDevice **`isScorm` flag (`> 0`)**, not by a fixed type list (DEC-0022). eXeLearning v4 gates all SCORM score reporting on that flag, so the plugin respects the author's intent rather than guessing by iDevice type.
+
+<Note>
+  `GRADABLE_IDEVICE_TYPES` in `package.php:55–88` is kept as **documentation only** of which types can be configured to report a grade. It is no longer the detection gate.
+</Note>
+
+`region_reports_score()` (`package.php:316–330`) scans up to four sources and takes the **maximum** flag value, so a plain `0` never shadows an encrypted `1`:
+
+| Priority | Source | Reader | Notes |
+|----------|--------|--------|-------|
+| 1 | `jsonProperties` JSON `isScorm` | `scan_isscorm_flag()` | trueorfalse, form, map, … |
+| 2 | `htmlView` `isScorm` | `scan_isscorm_flag()` | interactive-video, dragdrop, … (flag may be nested) |
+| 3 | Encrypted `*-DataGame` div | `scan_datagame_isscorm()` → `decrypt_datagame()` | exe-game family; decrypted with JS `unescape()` then XOR key 146 (0x92), mirroring eXeLearning's `decrypt()` (DEC-0037). Several DataGame divs: max wins. |
+| 4 | GeoGebra `auto-geogebra-scorm` class | `scan_geogebra_scorm_class()` | GeoGebra serialises no `isScorm` JSON; the author opt-in is the CSS class (issue #29; DEC-0043). Returns 2 when present. |
+
+## XML security
+
+<Warning>
+  Real `.elpx` packages declare an external DTD in the prolog —
+  `<!DOCTYPE ode SYSTEM "content.dtd">` — so the parser must accept that
+  declaration. It does, but never lets it do anything dangerous.
+</Warning>
+
+The plugin defends against two distinct XML attack classes:
+
+**XXE and external entity injection** are inert because `load_dom()` loads with `LIBXML_NONET | LIBXML_COMPACT` and **without** `LIBXML_DTDLOAD` or `LIBXML_NOENT` (`package.php:155`). Because `LIBXML_DTDLOAD` is absent, libxml never fetches `content.dtd`; because `LIBXML_NOENT` is absent, it never substitutes entities; `LIBXML_NONET` forbids any network access outright.
+
+**Billion-laughs / entity expansion** is blocked by rejecting any document that declares an internal entity subset. A genuine package never has one, so this guard never fires on legitimate uploads:
+
+```php
+if ($dom->doctype !== null && $dom->doctype->entities !== null
+        && $dom->doctype->entities->length > 0) {
+    debugging(
+        'mod_exelearning: content.xml declares internal XML entities and was rejected for safety.',
+        DEBUG_DEVELOPER
+    );
+    return null;
+}
+```
+
+The legitimate external `content.dtd` is never loaded, so it contributes no entities here and is unaffected (DEC-0039).
+
+<Note>
+  It is **imprecise** to say the parser "does not load external DTDs." It *accepts*
+  the external DOCTYPE declaration; it simply never *fetches or expands* it, and it
+  *rejects* internal entity subsets.
+</Note>
+
+**Zip path traversal** is handled by Moodle's file packer, which normalises entry paths during extraction. The plugin does not re-implement this protection.
+
+## objectid-stable routing
+
+Grade items are keyed by the package's stable `objectid` (the `<odeIdeviceId>` from `content.xml`), **not** by the page-local index, which can collide across pages. This means:
+
+- A **re-upload** that removes an iDevice soft-deletes its `exelearning_grade_item` row (`deleted=1`), preserving grade history, and removes the gradebook column.
+- A **re-appearing iDevice** (same `objectid`) keeps its original `itemnumber` — its gradebook column is restored rather than created anew.
+- An **in-place edit** that changes scoring options keeps the `objectid` but changes the `contenthash` (sha1 of the iDevice block, DEC-0021), triggering a staleness warning to the teacher.
+
+`track::ingest()` only routes scores to objectids already registered for the instance — it never creates grade items from client data.
+
+## Accepted vs rejected
+
+| Outcome | Condition |
+|---------|-----------|
+| **Accepted** | ZIP with a root `content.xml` (`.elpx` or `.zip`) |
+| **Rejected at upload** | No `content.xml` → `err_nocontentxml` |
+| **Degraded (regex fallback)** | `content.xml` present but malformed XML |
+| **Rejected by parser** | Document declares internal XML entities (billion-laughs defence) |

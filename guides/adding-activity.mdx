@@ -1,0 +1,73 @@
+---
+title: "Add an eXeLearning Resource to Your Moodle Course"
+sidebarTitle: "Adding Activity"
+description: "Step-by-step guide for teachers to add, configure, and publish an eXeLearning resource activity in a Moodle course."
+---
+
+The **eXeLearning resource** activity embeds a published eXeLearning v4 package (an `.elpx` file) directly inside a Moodle course. Unlike a plain SCORM package that reports a single aggregated score, this activity inspects your package and can register **each gradable iDevice as its own gradebook column** — so a single resource containing two quizzes records two independent grades. This guide walks you through adding and configuring the activity.
+
+## Adding the activity
+
+<Steps>
+  <Step title="Turn editing on">
+    In your course, click **Turn editing on** (top-right or via the course actions menu). The page enters editing mode, showing **Add an activity or resource** links in each section.
+  </Step>
+  <Step title="Choose eXeLearning resource">
+    Click **Add an activity or resource** in the course section where you want the activity to appear. In the activity chooser, select **eXeLearning resource** and click **Add**.
+  </Step>
+  <Step title="Fill in the form">
+    Complete the form fields described in the reference below. At minimum you must supply a **Name**. You can upload a package now or leave it empty and author the content in-place later using the embedded editor.
+  </Step>
+  <Step title="Save the activity">
+    Click **Save and display** (to go directly to the activity) or **Save and return to course**. Moodle extracts the package, detects gradable iDevices, and creates the gradebook columns automatically.
+  </Step>
+</Steps>
+
+## Form fields reference
+
+### General
+
+| Field | Description |
+|---|---|
+| **Name** | The activity title displayed in the course. This field is required. |
+| **Description** | Optional introductory text shown above the activity. Standard Moodle rich-text editor. |
+| **Package file** | Upload your eXeLearning v4 package here. Accepted formats are `.elpx` and `.zip` (the `.zip` must contain a valid `content.xml` — arbitrary zip archives are rejected). Only one file is accepted. You may leave this empty to start a blank activity and use the embedded editor later. |
+
+### Grading
+
+The grading section is split into two sub-sections in the form: **Grading** (how scores are reported) and **Attempts management** (how multiple attempts are handled).
+
+| Field | Default | Description |
+|---|---|---|
+| **Graded?** (`gradeenabled`) | On | Master grading switch. When turned off, the activity creates no gradebook columns, no attempt records, and behaves like a plain resource. All other grade and attempt fields are disabled while this is unchecked. |
+| **Gradebook columns** (`grademodel`) | Per iDevice | Controls whether the activity creates one column per gradable iDevice (**Per iDevice only**, the default) or a single aggregated column (**Overall only**, SCORM-style). See the [Grading guide](/guides/grading) for full details. |
+| **Maximum grade per item** (`grademax`) | `100` | The maximum score each gradebook column can reach. Applied to every per-iDevice column and the overall column alike. |
+| **Minimum grade** (`grademin`) | `0` | The floor for each column. Must not exceed `grademax`. |
+| **Grade to pass** (`gradepass`) | `0` | The minimum grade a student needs to pass. When set to a non-zero value and the **Require passing grade** completion condition is enabled, the activity is automatically marked complete once the student reaches this score — SCORM-style. Must lie within `[grademin, grademax]`. Set to `0` to disable pass-based completion. |
+| **Grade display** (`gradedisplaytype`) | Default | Controls how grades are displayed in the gradebook. Options: **Default** (inherit from course), **Real** (0–100), **Percentage**, **Letter** (A, B, …), **Real and percentage**. Moodle always stores grades numerically; this setting only changes the visual format. |
+| **Grade category** (`gradecat`) | Course top | The gradebook category that will contain all grade items for this activity. Uses the course's existing category tree. |
+| **Attempts allowed** (`maxattempt`) | `0` (unlimited) | Maximum number of attempts per student. One attempt corresponds to one page-load session of the activity. Set to `0` for no limit. |
+| **Attempts grading method** (`grademethod`) | Highest attempt | When a student has multiple attempts, determines which value is sent to the gradebook: **Highest** (default), **Average**, **First**, **Last** (most recent), or **Lowest**. |
+| **Students may review attempts** (`reviewmode`) | Always | Controls whether students can see a summary of their own previous attempts on the activity page: **Always** (default), **After the activity is complete**, or **Never**. |
+
+### Appearance
+
+| Field | Default | Description |
+|---|---|---|
+| **Show eXeLearning teacher-mode toggle** (`teachermodevisible`) | Off | eXeLearning packages can include a toggle that reveals content marked for teachers only. When this setting is **disabled** (the default), that toggle is hidden from all viewers by injecting CSS into the package. **Enable** it to make the toggle visible. This is independent of the **Try as a student (preview)** button, which is always available to teachers regardless of this setting. |
+
+### Standard Moodle common module settings
+
+Below the plugin-specific sections, the form includes Moodle's standard common module settings: **Availability** (visible/hidden), **ID number**, **Group mode**, **Grouping**, and the full **Activity completion** section (including manual completion, view-based completion, grade-based completion, and the custom status-based completion rule).
+
+## What happens after saving
+
+When you save a new or updated eXeLearning resource, the plugin performs the following steps automatically:
+
+1. **Package extraction** — the uploaded `.elpx` (or `.zip`) is unzipped on the server and stored in Moodle's file system.
+2. **iDevice detection** — the plugin scans `content.xml` inside the package for gradable iDevices (those with an `isScorm > 0` flag set by the iDevice author in eXeLearning).
+3. **Gradebook column registration** — one gradebook column per detected iDevice is created (in **Per iDevice** mode), or a single aggregated column (in **Overall** mode). Columns are named after the iDevice's stable object ID and linked to this activity instance.
+
+<Tip>
+  Gradebook columns are created automatically on save — you do not need to configure the gradebook manually. In **Per iDevice** mode, each exercise in your package becomes its own independent grade column, giving you granular per-exercise visibility that a plain SCORM activity cannot provide.
+</Tip>

@@ -1,0 +1,97 @@
+---
+title: "Tracking Pipeline: From SCORM Shim to Gradebook"
+sidebarTitle: "Tracking Pipeline"
+description: "End-to-end flow of how an eXeLearning iDevice score travels from the SCORM 1.2 window.API shim through track::ingest() to the Moodle gradebook."
+---
+
+When a student interacts with a gradable iDevice inside an eXeLearning activity, a chain of events carries their score from the browser — through a SCORM 1.2 compatibility layer — all the way to the Moodle gradebook. Understanding this pipeline is essential for debugging grading issues, contributing to the plugin, or evaluating the security model. Every channel (web and mobile web service) converges on a single server-side method, `track::ingest()`, so a fix or hardening in one place applies everywhere.
+
+## Pipeline overview
+
+```
+eXeLearning iDevice JS (pipwerks SCORM 1.2)  [inside same-origin iframe]
+     │  LMSSetValue / LMSCommit / LMSFinish
+     ▼
+window.API shim   (view.php inline JS)
+     │  buffers CMI pairs; resolves each iDevice to stable objectid
+     │  by reading the iframe DOM (DEC-0017)
+     │  POST { id, session, cmi, itemscores }  → track.php
+     ▼
+track.php         (sesskey + capability check)
+     │  require_param id · require_sesskey
+     │  require_login · preview gate / require_capability
+     │  payload validation
+     ▼
+track::ingest()   (classes/local/track.php)  ← SHARED scoring pipeline
+     │  normalise/clamp · filter to registered objectids · recompute overall server-side
+     │  resolve attempt · enforce maxattempt
+     ▼
+attempts::record_item / aggregate_scaled   (classes/local/attempts.php)
+     │  exelearning_attempt rows (flat, one per (exelearningid, userid, attempt, itemnumber))
+     ▼
+grade_update()  →  Moodle gradebook  +  completion_info::update_state()
+```
+
+The same `track::ingest()` is reused by the `save_track` web service for the mobile app (`classes/external/save_track.php:137`, DEC-0040). The web service only re-shapes its typed params into the `{cmi, session, itemscores}` payload and delegates; it never re-implements scoring.
+
+## Preview vs grading
+
+`?mode=preview` is honoured **only** when the caller holds `moodle/course:manageactivities` (`track.php:51–52`). A regular student who appends `?mode=preview` to the URL silently **falls back to grading mode**: `$ispreview` evaluates to `false`, so `require_capability('mod/exelearning:savetrack')` runs and the submission is graded normally.
+
+Preview itself **never persists**: `ingest()` returns before any gradebook write (`classes/local/track.php:96–98`). The web service always hardcodes `$ispreview = false` (`save_track.php:137`) — a WS caller cannot grade in preview mode.
+
+## Attempt model
+
+<CardGroup cols={2}>
+  <Card title="One attempt per page load">
+    The shim mints a random `session` token (`random_string(20)`, `view.php:531`) and stamps every auto-commit of that page view with it. `resolve_attempt_number()` reuses the attempt for a known token, else allocates `MAX(attempt)+1` (`attempts.php:182–206`).
+  </Card>
+  <Card title="Flat table">
+    `exelearning_attempt` holds one row per `(exelearningid, userid, attempt, itemnumber)`. `itemnumber=0` is the overall (OVERALL mode); `>0` is an iDevice. `record_item()` upserts so repeated auto-commits in the same session refine the same row (`attempts.php:223–268`).
+  </Card>
+  <Card title="Attempt aggregation">
+    Scores are aggregated across that user's attempts by the per-instance `grademethod` (highest/average/first/last/lowest) in `aggregate_scaled()` (`attempts.php:279–311`). See the [Gradebook](/developer/gradebook) page for the full aggregation method table.
+  </Card>
+  <Card title="Attempt cap enforcement">
+    When `maxattempt > 0` and a fresh session would exceed `count_user_attempts()`, `ingest()` returns `error => 'maxattemptsreached'` (`track.php ingest, classes/local/track.php:148–163`) and the endpoint replies **HTTP 409** — a conflict, not a 500. The web service surfaces the same condition as a warning (`save_track.php:140–147`).
+  </Card>
+</CardGroup>
+
+## Security model
+
+The package and the request are **not** trusted to assert identity, ownership, or a final grade. The authenticated Moodle session (`$USER`) is the grading subject; the server re-derives the overall and only routes to grade items it already knows.
+
+| # | Threat | Mitigation |
+|---|--------|------------|
+| 1 | **Inflate overall grade** | Server recomputes overall from per-iDevice `itemscores` (weighted mean); the client-supplied overall is never used (DEC-0018). |
+| 2 | **Inject unknown objectids** | Map is filtered to **registered** objectids before recompute (`registered_objectids()`); `apply_item_scores()` independently drops any objectid with no grade item. |
+| 3 | **Out-of-range scores** | Overall normalised to grade scale then clamped to `[grademin, grademax]`; per-iDevice percentages clamped `0..100` before scaling. |
+| 4 | **Oversized `itemscores` map** | Map with `> 1000` entries is dropped with a developer-level `debugging()` notice (a real package emits one entry per gradable iDevice). |
+| 5 | **Grade another user** | The payload carries no userid; `ingest()` is always called with `$USER->id`. |
+| 6 | **CSRF** | `require_sesskey()` runs before any work (`track.php:40`). |
+| 7 | **Unauthorised save** | `require_login($course,…,$cm)` then `require_capability('mod/exelearning:savetrack')`; preview path additionally requires `moodle/course:manageactivities`; web service adds `validate_context()` + same capability. |
+| 8 | **Malicious package navigates parent / spams modals** | Iframe `sandbox` grants `allow-scripts allow-same-origin allow-popups allow-forms allow-popups-to-escape-sandbox`; **no** `allow-top-navigation`, **no** `allow-modals`. |
+| 9 | **Status-only commit recorded as a real 0-score** | `scoreraw` is nullable; omitting it skips `cmi.core.score.raw`, so `ingest()` no-ops instead of persisting a 0-score attempt (DEC-0044 / B6). |
+
+<Note>
+  The iframe carries both `allow-scripts` and `allow-same-origin`, which Chrome flags
+  as escapable. This is accepted knowingly: the SCORM bridge requires same-origin
+  access so the parent can read `iframe.contentDocument` for the objectid map and the
+  child can walk `window.parent.API`. Cross-component XSS hardening is roadmapped as
+  **RIE-001 / DEC-0019**.
+</Note>
+
+## Web service path
+
+`save_track::execute()` (`classes/external/save_track.php`) re-shapes its typed parameters into the `{cmi, session, itemscores}` payload (`save_track.php:110–134`) and then delegates directly to `track::ingest()`. It does not re-implement any scoring, normalisation, clamping, objectid filtering, or attempt-cap logic — all of that lives in the shared pipeline. Web and mobile paths **cannot diverge** (DEC-0040).
+
+## Lifecycle events
+
+`track::ingest()` emits two **once-per-attempt** lifecycle events. No per-commit event is fired — the SCORM shim auto-commits approximately every 500 ms, so a per-commit event would be noise (DEC-0041 rejected it).
+
+| Event | When fired | Payload |
+|-------|-----------|---------|
+| `attempt_started` | First commit that creates the attempt row | Standard context fields |
+| `attempt_completed` | First commit that moves the attempt to a terminal status (`passed` / `failed` / `completed`) | Server-recomputed overall `score` and `status` in `other` |
+
+Both events fire from the single shared pipeline, so the web (`track.php`) and mobile (`save_track`, DEC-0040) paths produce the same signal. Preview, no-op (status-only), and over-cap commits emit nothing.

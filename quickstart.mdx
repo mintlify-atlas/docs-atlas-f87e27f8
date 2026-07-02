@@ -1,47 +1,107 @@
 ---
-title: "Quickstart"
-description: "Begin with a guide on the fastest path to a successful outcome"
+title: "Get Started with mod_exelearning in Minutes"
+sidebarTitle: "Quickstart"
+description: "Try mod_exelearning in your browser using Moodle Playground — no installation required. Demo credentials and a preloaded activity included."
 ---
 
-Describe how someone begins using your product. What is the first thing they need to do? Are there any prerequisites?
+The fastest way to experience `mod_exelearning` is **Moodle Playground** — a fully managed Moodle instance that boots in your browser with the plugin already installed, a demo course preloaded, and teacher and student accounts ready to use. No local setup, no Docker, no PHP required. If you prefer to run everything locally, a Docker Compose stack is also provided and seeds the identical demo content automatically.
 
-A quickstart should take someone from zero to using your product. They'll get a quick win and a sense of what they can accomplish.
-
-## Prerequisites
-
-Before you begin, you must have:
-
-- Requirement one (for example, Node.js 18+, a free account, an API key)
-- Requirement two (for example, a compatible device, a compatible browser, a compatible operating system)
-
-## Get started
+## Moodle Playground (no install)
 
 <Steps>
-  <Step title="Install">
-    Describe how to install your product or sign up.
+  <Step title="Open the Playground">
+    Click the link below (or the badge in the GitHub README) to launch a fresh Moodle with `mod_exelearning` pre-installed:
+
+    [**Preview in Moodle Playground →**](https://moodle-playground.com/?blueprint-url=https://raw.githubusercontent.com/exelearning/mod_exelearning/main/blueprint.json)
+  </Step>
+  <Step title="Wait for Moodle to boot">
+    The environment takes roughly one minute to initialise. During boot, the embedded eXeLearning editor is fetched from the GitHub release and unpacked into the plugin, so the first load may take a few extra seconds. The ELPX upload, viewer, and preview work normally once the environment is ready.
+  </Step>
+  <Step title="Log in as the demo teacher">
+    Use the following credentials on the Moodle login page:
+
+    | Field | Value |
+    |---|---|
+    | Username | `teacher_demo` |
+    | Password | `Demo!2026` |
+  </Step>
+  <Step title="Open the EXEDEMO course">
+    After login you will see the **Demo eXeLearning · ejemplo de uso** course listed on the dashboard. Click it to enter.
+  </Step>
+  <Step title="Open the demo activity">
+    Click **Actividad evaluable (demo)** to open the preloaded eXeLearning activity. The package contains two gradable iDevices, and both gradebook columns are already registered and visible in the course gradebook.
+  </Step>
+</Steps>
+
+<Info>
+  The demo environment includes two enrolled student accounts for testing the learner experience and the gradebook report:
+
+  | Username | Password | Role |
+  |---|---|---|
+  | `alumno1` | `Demo!2026` | Student |
+  | `alumno2` | `Demo!2026` | Student |
+
+  The preloaded activity (`actividad-evaluable.elpx`) contains two gradable iDevices — a `trueorfalse` question and a `guess` exercise — each mapped to its own independent gradebook column.
+</Info>
+
+## Local Docker quick start
+
+If you want a local environment for development or evaluation, the repository ships a Docker Compose stack based on `erseco/alpine-moodle` + MariaDB.
+
+<Steps>
+  <Step title="Start the stack">
+    Copy the example environment file and start the containers:
 
     ```bash
-    npm install your-package
+    cp .env.dist .env             # first time only
+    docker compose up -d          # start Moodle + MariaDB
+    docker compose logs -f moodle # follow the install/seed progress
     ```
   </Step>
-  <Step title="Configure">
-    Describe any setup or configuration needed before first use.
+  <Step title="Wait for the install to finish">
+    Moodle takes approximately one minute to install. Once the install finishes, `POST_CONFIGURE_COMMANDS` automatically runs `scripts/setup_demo.php`, which seeds the same demo course as the Playground badge. You will see output similar to:
 
-    ```bash
-    your-cli init
+    ```
+    === mod_exelearning · setup_demo ===
+      · Categoría creada: Demo eXeLearning (id=2)
+      · Curso creado: EXEDEMO (id=2)
+      · Profesor:    teacher_demo / Demo!2026
+      · Estudiantes: alumno1, alumno2 / Demo!2026
+      · Actividad creada: Actividad evaluable (demo) (cmid=2, instance=1)
     ```
   </Step>
-  <Step title="Run it">
-    Show the first thing a user does to see it working.
+  <Step title="Log in to your local Moodle">
+    Moodle is now reachable at [http://localhost](http://localhost). The default admin credentials are:
 
-    ```bash
-    your-cli start
-    ```
+    | Field | Value |
+    |---|---|
+    | Username | `user` |
+    | Password | `1234` |
+
+    You can override these values via the `.env` file before starting the stack.
   </Step>
 </Steps>
 
 <Tip>
-  Give people a way to get help. This could be a link to a support page, a chat with a customer support agent, or a forum for your product.
+  To regenerate the demo content without reinstalling Moodle, run the seed script directly inside the container:
 
-  Example: Need help? Reach out to us at [support@yourcompany.com](mailto:support@yourcompany.com).
+  ```bash
+  docker compose exec moodle php /var/www/html/mod/exelearning/scripts/setup_demo.php
+  ```
+
+  To tear down the stack while keeping the database volume, run `docker compose down`. To wipe everything including stored data, run `docker compose down -v`.
 </Tip>
+
+## Next steps
+
+<CardGroup cols={3}>
+  <Card title="Installation" icon="download" href="/installation">
+    Install `mod_exelearning` on your own Moodle instance via ZIP upload or manual file placement.
+  </Card>
+  <Card title="Adding an Activity" icon="circle-plus" href="/guides/adding-activity">
+    Step-by-step guide to creating your first eXeLearning activity for students.
+  </Card>
+  <Card title="Admin Settings" icon="sliders" href="/admin/site-settings">
+    Configure the embedded editor, manage styles, and review site-level defaults.
+  </Card>
+</CardGroup>

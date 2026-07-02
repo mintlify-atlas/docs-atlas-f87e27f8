@@ -1,0 +1,88 @@
+---
+title: "mod_exelearning Web Service API Overview"
+sidebarTitle: "Overview"
+description: "8 web-service functions registered in db/services.php for the Moodle App and external clients. All mobile functions are members of MOODLE_OFFICIAL_MOBILE_SERVICE."
+---
+
+The `mod_exelearning` plugin exposes **8 external functions** across **7 classes**, all declared in `db/services.php`. Every class in `classes/external/` is wired to at least one function, and every declared function maps to an existing class method — there are zero orphans. Functions are split into two groups with distinct security postures: six mobile/external functions accessible to the Moodle App and token clients, and two AJAX-only admin editor functions restricted to the system context.
+
+## Function groups
+
+### Mobile / external client functions (6 functions)
+
+These six functions are members of `MOODLE_OFFICIAL_MOBILE_SERVICE`, making them accessible to the official Moodle App and any external client that holds a valid token. Each function enforces context validation, login checks, and capability checks in code.
+
+| Function | Class::method |
+|---|---|
+| `mod_exelearning_get_exelearnings_by_courses` | `get_exelearnings_by_courses::execute` |
+| `mod_exelearning_view_exelearning` | `view_exelearning::execute` |
+| `mod_exelearning_get_exelearning_access_information` | `get_exelearning_access_information::execute` |
+| `mod_exelearning_get_user_attempts` | `get_user_attempts::execute` |
+| `mod_exelearning_get_user_grades` | `get_user_grades::execute` |
+| `mod_exelearning_save_track` | `save_track::execute` |
+
+### Admin AJAX functions (2 functions)
+
+`mod_exelearning_manage_embedded_editor_action` and `mod_exelearning_manage_embedded_editor_status` are declared with `'ajax' => true` and belong to **no service**. They are called exclusively by the in-settings editor admin widget over AJAX and are never exposed to external token clients. Both require **both** `moodle/site:config` **and** `mod/exelearning:manageembeddededitor` in the **system context**, enforced in code.
+
+## Function summary
+
+| Function | Type | Capability | Purpose |
+|---|---|---|---|
+| `mod_exelearning_get_exelearnings_by_courses` | read | `mod/exelearning:view` | List instances in courses |
+| `mod_exelearning_view_exelearning` | write | `mod/exelearning:view` | Log a view (event + completion) |
+| `mod_exelearning_get_exelearning_access_information` | read | *(none — intentional)* | User capability flags |
+| `mod_exelearning_get_user_attempts` | read | `:view` (own); `:viewreport` (others) | User's attempts |
+| `mod_exelearning_get_user_grades` | read | `:view` (own); `:viewreport` (others) | User's per-iDevice grades |
+| `mod_exelearning_save_track` | write | `mod/exelearning:savetrack` | Submit per-iDevice scores |
+
+## Authentication
+
+All functions use Moodle's standard token authentication. Generate a token at **Site administration → Server → Web services → Manage tokens**. Pass it in every request:
+
+```http
+POST {wwwroot}/webservice/rest/server.php
+Content-Type: application/x-www-form-urlencoded
+
+wstoken=<token>&wsfunction=mod_exelearning_get_exelearnings_by_courses&moodlewsrestformat=json&courseids[0]=42
+```
+
+The `wstoken` parameter identifies and authenticates the caller. All authorisation decisions (capabilities, context) are made server-side based on the user the token belongs to.
+
+## Common security model
+
+Every mobile/external function follows the same server-side security posture:
+
+1. **`validate_parameters()`** — type-checks and sanitises all inputs before any DB access.
+2. **`validate_context()`** — establishes the module context and verifies the session is valid.
+3. **`require_capability()`** — enforces the declared capability (e.g. `mod/exelearning:view`) against the module context.
+4. **`core_user::require_active_user()`** — `get_user_attempts` and `get_user_grades` additionally call this before reading a target user, and gate access to another user's data behind `mod/exelearning:viewreport`.
+
+The two admin editor functions use the **system context** instead of a module context, and require both `moodle/site:config` and `mod/exelearning:manageembeddededitor`.
+
+## About the empty capability on get_exelearning_access_information
+
+`db/services.php` declares an **empty** `capabilities` string for `mod_exelearning_get_exelearning_access_information` — by design, not by omission. The function's purpose is to report the calling user's capabilities, so gating it on any single capability would prevent it from returning useful data for unprivileged users (a vector of `false` flags is the correct and expected answer). `validate_context()` is still enforced; there is simply no `require_capability()` call.
+
+## Function pages
+
+<CardGroup cols={2}>
+  <Card title="get_exelearnings_by_courses" icon="list" href="/api/get-exelearnings-by-courses">
+    List mod_exelearning instances in specified courses
+  </Card>
+  <Card title="view_exelearning" icon="eye" href="/api/view-exelearning">
+    Trigger the course_module_viewed event and update completion
+  </Card>
+  <Card title="get_access_information" icon="lock-open" href="/api/get-access-information">
+    Return the caller's per-capability boolean flags
+  </Card>
+  <Card title="get_user_attempts" icon="clock-rotate-left" href="/api/get-user-attempts">
+    Return a user's attempt history
+  </Card>
+  <Card title="get_user_grades" icon="graduation-cap" href="/api/get-user-grades">
+    Return a user's per-iDevice gradebook grades
+  </Card>
+  <Card title="save_track" icon="floppy-disk" href="/api/save-track">
+    Submit per-iDevice SCORM scores for the current user
+  </Card>
+</CardGroup>

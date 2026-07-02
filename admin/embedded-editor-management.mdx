@@ -1,0 +1,117 @@
+---
+title: "Manage the Embedded eXeLearning Editor"
+sidebarTitle: "Editor Management"
+description: "Install, update, repair, or uninstall the embedded eXeLearning editor from within Moodle. The editor is downloaded from GitHub Releases and verified by SHA-256."
+---
+
+The plugin ships an optional embedded eXeLearning v4 editor that teachers use for in-place authoring — creating and editing `.elpx` packages without leaving Moodle. The editor runs entirely in the browser inside a same-origin `<iframe>`, exchanging packages with Moodle over `postMessage` and same-origin AJAX. No external editor service or internet connection is required during normal use; only the one-time admin install step reaches out to GitHub.
+
+## Editor Source Precedence
+
+The plugin resolves the editor from two possible sources, in fixed priority order. The admin-installed version always wins over the copy bundled with the plugin release.
+
+| Order | Source | Location |
+|---|---|---|
+| 1 (highest) | Admin-installed | `$CFG->dataroot/mod_exelearning/embedded_editor/` |
+| 2 | Bundled with plugin | `$CFG->dirroot/mod/exelearning/dist/static/` |
+
+A source is considered usable only when its directory contains a readable `index.html` **and** at least one of the expected asset directories (`app`, `libs`, or `files`). If neither source is usable, the embedded editor is disabled and teachers see a fallback message.
+
+<Info>
+  Release ZIPs downloaded from GitHub already include a pre-built bundled copy of
+  the editor, so the admin install step is optional — but installing via the
+  management widget gives you a newer version independently of the plugin release cycle.
+</Info>
+
+## Installing the Editor
+
+<Steps>
+  <Step title="Open the Plugin Settings Page">
+    Go to **Site administration → Plugins → Activity modules → eXeLearning resource**, or navigate directly to:
+    ```
+    {wwwroot}/admin/settings.php?section=modsettingexelearning
+    ```
+  </Step>
+  <Step title="Click Install in the Embedded Editor Management Widget">
+    The **Embedded editor management** card at the top of the settings page shows the current status. Click the **Install** button.
+  </Step>
+  <Step title="Automatic Download, Verification, and Extraction">
+    The installer runs the following pipeline automatically:
+
+    1. Fetches the GitHub Atom feed (`https://github.com/exelearning/exelearning/releases.atom`) to discover the latest release version.
+    2. Calls the GitHub Releases REST API to retrieve the published SHA-256 digest for the `exelearning-static-v{version}.zip` asset.
+    3. Downloads the ZIP asset to a temporary file.
+    4. Verifies the downloaded file's SHA-256 digest using `hash_equals()`.
+    5. Checks the ZIP magic bytes, then inspects every ZIP entry for path-traversal sequences before extraction (zip-slip protection).
+    6. Normalises the extracted directory layout (handles 1–3 nesting levels) and validates that the resulting directory is a usable editor.
+    7. Atomically renames the temporary extraction into `moodledata/mod_exelearning/embedded_editor/`, with backup and rollback if the rename fails.
+  </Step>
+  <Step title="Metadata Stored">
+    On success, the installed version string and installation timestamp are written to plugin config (`embedded_editor_version` and `embedded_editor_installed_at`). The widget refreshes to show the newly installed version.
+  </Step>
+</Steps>
+
+## Available Operations
+
+Once an editor is installed, additional operations become available in the management widget.
+
+| Operation | What it does |
+|---|---|
+| **Install** | Downloads and installs the latest release from GitHub into moodledata. |
+| **Update** | Re-runs the install pipeline; replaces the current moodledata copy with the newest available release. |
+| **Repair** | Uninstalls the existing moodledata copy, then re-installs the latest release. Use this if the installed copy is corrupted or incomplete. |
+| **Uninstall** | Removes the moodledata copy and clears the stored metadata. The plugin falls back to the bundled copy if one is available. |
+
+## Concurrent Install Protection
+
+The installer acquires an **atomic Moodle lock** before touching the filesystem, using:
+
+```
+core\lock\lock_config::get_lock_factory('mod_exelearning')
+    ->get_lock('editor_install', 5)
+```
+
+If a second install is triggered while one is already in progress, the lock acquisition times out and the request fails with the `editorinstallconcurrent` error. The lock is always released in a `finally` block, so a failed or interrupted install never leaves the lock permanently held.
+
+A cross-request progress marker (`embedded_editor_installing` timestamp) is also written while the lock is held. The admin status endpoint reads this marker to display an `installing` or `install_stale` state in the widget. The marker is considered stale after **300 seconds** (`INSTALL_LOCK_TIMEOUT`).
+
+<Note>
+  **Moodle Playground (WebAssembly):** The WASM runtime cannot make outbound HTTP
+  requests directly. In this environment, the browser itself downloads the release
+  ZIP and POSTs it to a same-origin upload endpoint
+  (`manage_embedded_editor_upload.php`). That endpoint re-checks login, session key,
+  and both required capabilities before calling `install_from_local_zip()`. The
+  security model is identical; only the network path differs.
+</Note>
+
+## Required Capability
+
+Both endpoints — the install action and the status check — require **both** of the following capabilities in the **system context**:
+
+- `moodle/site:config`
+- `mod/exelearning:manageembeddededitor`
+
+## Security Notes
+
+The installer applies several layers of security during the download-and-install pipeline.
+
+<CardGroup cols={1}>
+  <Card title="SHA-256 Integrity Verification" icon="shield-check">
+    The expected digest is fetched from the GitHub Releases REST API (bound to
+    release metadata, not just transport TLS) and compared to the downloaded file
+    using `hash_equals()` to prevent timing attacks. A mismatch raises
+    `editordigestmismatch` and aborts.
+  </Card>
+  <Card title="Zip-Slip Protection" icon="file-zipper">
+    Every ZIP entry path is checked for path-traversal sequences
+    (`..`, absolute paths) before any file is written to disk, using the shared
+    `styles_service::is_unsafe_zip_entry()` helper. Unsafe entries cause the
+    install to abort.
+  </Card>
+  <Card title="TLS Certificate Verification and SSRF Blocklist" icon="lock">
+    Outbound requests verify the full certificate chain and keep Moodle's SSRF
+    blocklist active. Both constraints are relaxed **only** inside the Moodle
+    Playground environment, gated on the `MOODLE_PLAYGROUND` constant. They are
+    always enforced on standard Moodle installations.
+  </Card>
+</CardGroup>

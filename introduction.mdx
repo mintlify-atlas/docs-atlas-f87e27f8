@@ -1,0 +1,61 @@
+---
+title: "mod_exelearning: eXeLearning Resources for Moodle"
+sidebarTitle: "Introduction"
+description: "mod_exelearning is a Moodle activity module that embeds eXeLearning v4 packages with native navigation and per-iDevice gradebook columns."
+---
+
+`mod_exelearning` is a Moodle activity-type module that lets teachers create, edit, and grade eXeLearning v4 packages (`.elpx`) directly inside Moodle. It preserves eXeLearning's native sidebar navigation while recording one or more independent gradebook items per resource — for example, a single activity with two embedded quizzes registers two separate gradebook columns. The plugin merges the strengths of two sibling modules: `mod_exeweb`, which keeps eXeLearning's native navigation but offers no grading, and `mod_exescorm`, which grades via SCORM but collapses everything into a single aggregated column. `mod_exelearning` does both at once.
+
+## Core capabilities
+
+<CardGroup cols={2}>
+  <Card title="Native sidebar navigation" icon="sidebar">
+    Renders the full eXeLearning package interface with its built-in sidebar intact — no content is flattened or re-wrapped.
+  </Card>
+  <Card title="Per-iDevice gradebook" icon="table-columns">
+    Detects every gradable iDevice in `content.xml` at upload time and creates an independent Moodle gradebook column for each one.
+  </Card>
+  <Card title="Embedded editor" icon="pen-to-square">
+    A fully self-hosted eXeLearning editor ships inside the plugin (or is downloaded via the admin settings page), so teachers can author `.elpx` packages without leaving Moodle.
+  </Card>
+  <Card title="Multi-attempt support" icon="rotate">
+    Each submission is stored as an attempt. The teacher configures the attempt cap and the aggregation strategy (highest, average, first, last, or lowest score).
+  </Card>
+  <Card title="Moodle App API" icon="mobile">
+    Six external functions are registered under `MOODLE_OFFICIAL_MOBILE_SERVICE`, covering course listing, view logging, access flags, attempt history, per-iDevice grades, and score submission.
+  </Card>
+  <Card title="GDPR compliance" icon="shield-halved">
+    A full Privacy API provider exports and deletes all user data — attempts, grades, and tracking records — in response to data requests and erasure actions.
+  </Card>
+</CardGroup>
+
+## How it compares to sibling plugins
+
+All three modules in the eXeLearning family for Moodle serve different use cases. Choose the one that matches your grading needs.
+
+| Plugin | Native sidebar nav | Grading | Gradebook columns |
+|---|---|---|---|
+| `mod_exeweb` | ✅ | ❌ No grading | — |
+| `mod_exescorm` | ❌ | ✅ SCORM grading | Single aggregated column |
+| `mod_exelearning` | ✅ | ✅ Per-iDevice grading | One column per gradable iDevice |
+
+`mod_exelearning` is the recommended choice whenever you need both the full eXeLearning content experience and granular gradebook feedback.
+
+## Architecture overview
+
+The plugin is structured in clearly separated layers so that business rules stay independent of the Moodle framework glue:
+
+- **`lib.php` facade** — implements every Moodle callback hook (`exelearning_add_instance`, `exelearning_grade_item_update`, `exelearning_get_grade_item_names`, etc.) and delegates to domain classes. Keeps framework coupling at the boundary.
+- **`classes/local/`** — domain classes covering attempt management, ELPX package parsing, iDevice detection, and the SCORM 1.2 tracking bridge (`track.php` / `window.API` shim).
+- **`classes/grades/`** — gradebook model logic: per-iDevice item registration, the OVERALL vs PER-ITEM switching, aggregation strategies, and pass-grade completion integration.
+- **`classes/external/`** — six external API functions for the Moodle App and other external clients, each enforcing context, login state, and capability checks before touching any data.
+
+## Plugin identity
+
+| Property | Value |
+|---|---|
+| Component name | `mod_exelearning` |
+| Moodle archetype | `MOD_ARCHETYPE_ASSIGNMENT` |
+| Moodle purpose | `MOD_PURPOSE_ASSESSMENT` |
+| Maturity | `MATURITY_STABLE` |
+| License | GNU GPL v3 or later |

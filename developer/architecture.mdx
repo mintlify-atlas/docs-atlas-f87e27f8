@@ -1,0 +1,149 @@
+---
+title: "mod_exelearning Plugin Architecture and Request Flows"
+sidebarTitle: "Architecture"
+description: "Layered responsibility map of mod_exelearning — from the Moodle facade callbacks in lib.php through domain classes to the external API surface."
+---
+
+`mod_exelearning` delivers and grades eXeLearning v4 (`.elpx`) packages inside a Moodle course, preserving the native eXe sidebar and recording multiple gradable items per activity. The plugin is deliberately layered: thin Moodle-mandated entry points delegate all domain work to testable classes under `classes/local/*` and `classes/grades/*`, with a single shared scoring pipeline that the web endpoint and the mobile web service both converge on.
+
+## One-paragraph model
+
+A teacher uploads an `.elpx` (a ZIP with `content.xml`). `lib.php` stores it and extracts it to a per-revision file area; `local\package` parses `content.xml` and enumerates the **gradable iDevices**; `lib.php` registers one Moodle grade item per iDevice (multi-`itemnumber`). At view time `view.php` serves the package inside a sandboxed iframe and injects a SCORM 1.2 `window.API` shim; learner interactions are POSTed to `track.php`, normalised and scored **server-side** by `local\track`, recorded as attempts by `local\attempts`, and pushed to the gradebook by `lib.php`. The same scoring pipeline backs the `save_track` web service. `classes/external` exposes the API surface; `classes/privacy` declares personal data; `backup/moodle2` exports and imports the activity.
+
+## Layered responsibility map
+
+| Layer | Code | Responsibility |
+|---|---|---|
+| **Moodle façade** | `lib.php` | Module callbacks: `*_supports`, `*_add/update/delete_instance`, `*_pluginfile`, grade callbacks, reset, settings navigation. Each non-trivial callback is a **thin delegator** to a domain class. |
+| **Grades domain** | `classes/grades/grade_sync.php`, `grade_recalculator.php`, `grade_item_manager.php`, `completion_validator.php`, `gradeitems.php` | Detect gradable iDevices and synchronise/soft-delete grade items; batched re-aggregation per user/item; overall-item guard and column naming; `itemnumber_mapping` interface. |
+| **Package domain** | `classes/local/package.php`, `classes/local/package_manager.php` | Parse `content.xml`, detect gradable iDevices (`isScorm`), content hashing, XML hardening; store/locate the ELPX, validate `content.xml`, extract to `content/{revision}/`. |
+| **SCORM transforms** | `classes/local/scorm/scorm_injector.php`, `classes/local/scorm/idevice_patch.php` | Inject the SCORM wrapper `<script>` tags + `init()` into extracted HTML; drop the `body.exe-scorm` save guard from `form`/`scrambled-list` iDevices (DEC-0042). |
+| **URLs / UI** | `classes/local/urls.php`, `classes/local/ui/teacher_mode_hider.php` | Gradebook deep-link, grade-analysis, and navigation-before-key builders; queue the iframe teacher-toggle hider JS. |
+| **Tracking domain** | `classes/local/track.php` | Ingest tracking payloads: normalise/clamp scores, route by stable `objectid`, recompute the overall server-side, enforce attempt caps, drive completion. Single source of truth for scoring. |
+| **Attempts domain** | `classes/local/attempts.php` | Attempt numbering (session-token grouping), upsert of `exelearning_attempt`, aggregation (highest/average/first/last/lowest). |
+| **API boundary** | `classes/external/*` (7 classes) | Web services for the mobile app and admin AJAX editor management; each validates context, login, and capability. Fully declared in `db/services.php`. |
+| **Privacy** | `classes/privacy/provider.php` | Declares `exelearning_attempt` metadata and the `core_grades` data flow; export/delete with grade recalculation. |
+| **Backup/Restore** | `backup/moodle2/*` | Export/import instance, grade-item mappings, attempts (gated by `userinfo`), and the `intro`/`package`/`content` file areas; remap user ids. |
+| **Events** | `classes/event/*` | `attempt_deleted`, `report_viewed`, `course_module_instance_list_viewed`. Selective observability — no per-commit event. |
+| **Global search** | `classes/search/activity.php` | Search area extending `\core_search\base_activity`: indexes the activity `intro` and, via file indexing, the text extracted from the `content` file area. |
+| **Editor integration** | `classes/local/embedded_editor_*`, `classes/admin/*`, `amd/src/editor_modal.js`, `editor/index.php` | Resolve/install/update/repair/uninstall the embedded editor; `postMessage` open/export bridge; save → re-extract → re-sync. |
+| **Entry points** | `view.php`, `track.php`, `grade.php`, `report.php`, `mod_form.php` | View + SCORM shim; tracking endpoint; gradebook deep-link; attempts report; activity form. Thin controllers — security checks here, scoring logic delegated to `local\*`. |
+
+## Request flows
+
+The three primary request flows show how each layer collaborates at runtime.
+
+### 1. Authoring (upload)
+
+```
+mod_form.php        validate zip-has-content.xml
+    │
+    ▼
+exelearning_add/update_instance()   (lib.php — thin delegator)
+    │
+    ▼
+package_manager::save_and_extract()
+    │  stores zip in package filearea
+    │  extracts to content/{revision}/
+    ▼
+scorm_injector + idevice_patch      (serve-time transforms, DEC-0045)
+    │
+    ▼
+grade_sync::sync()
+    │  local\package::detect_gradable_idevices()
+    │  registers one grade item per iDevice
+    ▼
+grade_update(..., itemnumber=N, ...)  →  Moodle gradebook
+```
+
+### 2. Delivery + grading (learner)
+
+```
+view.php            sandboxed iframe + window.API shim
+    │
+    ▼
+iDevice JS (pipwerks SCORM 1.2)     [inside same-origin iframe]
+    │  LMSSetValue / LMSCommit / LMSFinish
+    ▼
+window.API shim     buffers CMI pairs; resolves each iDevice to stable objectid
+    │  POST { id, session, cmi, itemscores }
+    ▼
+track.php           require_sesskey + require_capability('mod/exelearning:savetrack')
+    │
+    ▼
+track::ingest()     normalise/clamp · filter to registered objectids
+    │               recompute overall server-side · enforce maxattempt
+    ▼
+attempts::record_item / aggregate_scaled
+    │
+    ├──► grade_update()  →  Moodle gradebook
+    └──► completion_info::update_state()
+```
+
+### 3. Mobile/external (web service)
+
+```
+classes/external/save_track::execute()
+    │  re-shapes typed params into { cmi, session, itemscores }
+    │  hardcodes $ispreview = false
+    ▼
+track::ingest()     ← SAME shared scoring pipeline as the web path
+    │
+    ├──► grade_update()  →  Moodle gradebook
+    └──► completion_info::update_state()
+```
+
+<Note>
+  The web and web-service paths **cannot diverge** on normalisation, objectid
+  filtering, overall recomputation, clamping, or the attempt cap — all of that
+  logic lives in the single unit-tested `track::ingest()` (DEC-0040).
+</Note>
+
+## Design principles
+
+<CardGroup cols={2}>
+  <Card title="Thin controllers, fat domain classes">
+    Entry-point PHP files handle authentication and transport. Scoring, parsing,
+    and aggregation live in `classes/local/*` and `classes/grades/*`. `lib.php`
+    holds only Moodle-mandated callback signatures plus thin delegators (~960 lines
+    after the DEC-0054 extraction from ~1751).
+  </Card>
+  <Card title="One scoring pipeline">
+    Web and web-service paths converge on `track::ingest()` (DEC-0040). A fix or
+    a hardening in that method applies to both channels simultaneously.
+  </Card>
+  <Card title="Server authority over grades">
+    The client never sets the overall grade. The server recomputes it from
+    per-iDevice `itemscores` (DEC-0018). See the [Tracking Pipeline](/developer/tracking-pipeline)
+    page for the full security model.
+  </Card>
+  <Card title="Stable identity">
+    Grade routing keys on the package `objectid` (the `odeIdeviceId` from
+    `content.xml`), not page order (DEC-0017). Items soft-delete and carry a
+    content hash for staleness detection (DEC-0021).
+  </Card>
+  <Card title="Defensive XML parsing">
+    `content.xml` is parsed with a hardened DOM loader (no `LIBXML_DTDLOAD`,
+    no `LIBXML_NOENT`, internal entity rejection) and a controlled regex fallback
+    (DEC-0039). See the [ELPX Package](/developer/elpx-package) page for details.
+  </Card>
+</CardGroup>
+
+## Technical debt
+
+<Warning>
+  **Tracked coupling: DEC-0045 / DEC-0046**
+
+  The package HTML is mutated at extraction time to inject the SCORM wrapper
+  (`local\scorm\scorm_injector`) and hide the teacher-mode toggle
+  (`local\ui\teacher_mode_hider`). This couples the plugin to eXeLearning v4
+  internals and is the main recognised debt. The documented exit path is:
+
+  1. **DEC-0045** — serve-time transform (deferred)
+  2. **DEC-0046** — move injections upstream into eXeLearning itself
+  3. **DEC-0032** — eventual xAPI migration
+
+  The SCORM 1.2 shim in `view.php` is **not** considered debt — it is the
+  deliberate compatibility surface that lets an unmodified web export report
+  scores.
+</Warning>

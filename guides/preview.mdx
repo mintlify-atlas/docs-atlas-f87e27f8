@@ -1,0 +1,58 @@
+---
+title: "Preview an eXeLearning Activity as a Student"
+sidebarTitle: "Preview Mode"
+description: "Use preview mode to experience an eXeLearning activity as a student would, without recording grades or consuming attempt slots."
+---
+
+Preview mode lets teachers interact with an eXeLearning resource exactly as a student would — navigating the content, triggering iDevices, and checking scores — without any of those interactions being recorded. No attempt is created, no gradebook value is written, and no attempt slot is consumed. This makes it safe to verify content and scoring behaviour before students enrol, or to demonstrate the activity to colleagues.
+
+## Using preview mode
+
+<Steps>
+  <Step title="Open the activity as a teacher">
+    Navigate to the eXeLearning resource activity in your course. You must be viewing it with a role that holds the `moodle/course:manageactivities` capability (typically Teacher or Editing Teacher).
+  </Step>
+  <Step title="Click Try as a student (preview)">
+    Click the **Try as a student (preview)** button that appears on the activity page. This button is only shown to users who can manage the activity — students never see it.
+  </Step>
+  <Step title="Interact freely">
+    A yellow banner appears at the top of the activity reading _"Preview mode (test): Nothing you do here will be saved to the gradebook."_ You can navigate through all pages, interact with every iDevice, and check the scoring feedback — none of it is recorded.
+  </Step>
+  <Step title="Exit preview mode">
+    When you are finished, click **Exit preview mode** to return to the normal (grading) view of the activity.
+  </Step>
+</Steps>
+
+<Note>
+  Preview mode is available **only** to users who hold the `moodle/course:manageactivities` capability. If a regular student somehow attempts to access a preview-mode URL directly, the system falls back to normal grading mode automatically — students cannot enter or benefit from preview mode under any circumstances.
+</Note>
+
+## What preview does and does not do
+
+<CardGroup cols={2}>
+  <Card title="What preview does" icon="circle-check">
+    - Renders the full package with its native eXeLearning sidebar and navigation
+    - Allows interaction with all gradable iDevices — you see the same feedback a student would
+    - Displays the yellow "Preview mode" banner so you always know you are not in a real session
+    - Respects the **Show eXeLearning teacher-mode toggle** setting (see below)
+  </Card>
+  <Card title="What preview does NOT do" icon="circle-xmark">
+    - Record any attempt or grade — preview submissions are discarded before any gradebook write
+    - Consume an attempt slot — your attempt count is unchanged after previewing
+    - Affect completion status — previewing never triggers activity completion
+    - Store any data about your preview session in the database
+  </Card>
+</CardGroup>
+
+## Teacher-mode toggle in preview
+
+The **Show eXeLearning teacher-mode toggle** setting (`teachermodevisible`) in the activity's Appearance section controls whether a teacher-only content toggle is visible inside the embedded package.
+
+- When **disabled** (the default), the toggle is hidden for all viewers by injecting CSS into the package — students never see teacher-only content.
+- When **enabled**, the toggle appears inside the package for any viewer.
+
+In preview mode, teachers can use this toggle (if enabled) to reveal iDevice content that is marked for teachers only in eXeLearning — for example, answer keys or instructor notes embedded inside the package. This is useful for verifying that teacher-only content is correctly hidden before going live.
+
+<Tip>
+  If you want to experience the activity **exactly** as a specific student sees it — including their personalised completion state, available attempts, and any review summaries — use Moodle's built-in **Switch role to Student** feature (available from the user menu in the course) rather than preview mode. Preview mode gives you a clean, unrecorded session; role-switching gives you the full student perspective within your own account context.
+</Tip>

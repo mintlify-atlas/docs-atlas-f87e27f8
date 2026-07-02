@@ -1,0 +1,173 @@
+---
+title: "mod_exelearning_get_exelearnings_by_courses"
+sidebarTitle: "get_exelearnings_by_courses"
+description: "Read function that lists mod_exelearning instances in specified courses, or all enrolled courses when none are specified. Returns warnings for inaccessible courses."
+---
+
+`mod_exelearning_get_exelearnings_by_courses` returns all accessible `mod_exelearning` instances visible to the calling user in the given set of courses. When no course IDs are supplied the function automatically queries the user's enrolled courses. Courses the user cannot access produce a warning entry rather than an error, so a single inaccessible course never aborts the entire request.
+
+## Function details
+
+| Field | Value |
+|---|---|
+| **Function name** | `mod_exelearning_get_exelearnings_by_courses` |
+| **Class::method** | `mod_exelearning\external\get_exelearnings_by_courses::execute` |
+| **Type** | `read` |
+| **Service** | `MOODLE_OFFICIAL_MOBILE_SERVICE` |
+| **Capability** | `mod/exelearning:view` |
+
+## Parameters
+
+<ParamField body="courseids" type="array of int" optional>
+  List of course IDs to search for `mod_exelearning` instances. Pass an empty array (or omit the parameter) to search all courses the authenticated user is enrolled in.
+</ParamField>
+
+## Returns
+
+<ResponseField name="exelearnings" type="array">
+  Array of activity instance objects. Visibility is enforced by `get_all_instances_in_courses()` — hidden or restricted instances are excluded for users without the appropriate permission.
+
+  <Expandable title="Instance object fields">
+    <ResponseField name="id" type="int">
+      The `exelearning` table row ID (the activity instance ID).
+    </ResponseField>
+    <ResponseField name="coursemodule" type="int">
+      The course-module ID (`cm.id`). Use this as `cmid` in other functions.
+    </ResponseField>
+    <ResponseField name="course" type="int">
+      ID of the course containing the activity.
+    </ResponseField>
+    <ResponseField name="name" type="string">
+      Display name of the activity, formatted for output.
+    </ResponseField>
+    <ResponseField name="intro" type="string">
+      Intro text, formatted for output.
+    </ResponseField>
+    <ResponseField name="introformat" type="int">
+      Moodle text format constant for `intro`.
+    </ResponseField>
+    <ResponseField name="introfiles" type="array">
+      Files embedded in the intro field (standard Moodle file structure).
+    </ResponseField>
+    <ResponseField name="packageurl" type="string">
+      Download URL for the source ELPX package. **Only returned to users who hold `moodle/course:manageactivities`** (teachers and admins). Absent for students.
+    </ResponseField>
+    <ResponseField name="timemodified" type="int">
+      Unix timestamp of the last modification.
+    </ResponseField>
+    <ResponseField name="section" type="int">
+      Course section number.
+    </ResponseField>
+    <ResponseField name="visible" type="int">
+      `1` if the activity is visible to students; `0` if hidden.
+    </ResponseField>
+    <ResponseField name="groupmode" type="int">
+      Group mode setting (0 = no groups, 1 = separate, 2 = visible).
+    </ResponseField>
+    <ResponseField name="groupingid" type="int">
+      ID of the grouping used for access restriction (`0` = none).
+    </ResponseField>
+    <ResponseField name="gradeenabled" type="int">
+      Whether grading is enabled for this activity (`1` = yes, `0` = no).
+    </ResponseField>
+    <ResponseField name="grademodel" type="int">
+      Grade model: `0` = single overall column, `1` = per-iDevice columns.
+    </ResponseField>
+    <ResponseField name="grademax" type="float">
+      Maximum grade value for the activity.
+    </ResponseField>
+    <ResponseField name="grademin" type="float">
+      Minimum grade value (typically `0`).
+    </ResponseField>
+    <ResponseField name="gradepass" type="float">
+      Passing grade threshold (`0` = no pass/fail threshold set).
+    </ResponseField>
+    <ResponseField name="gradedisplaytype" type="int">
+      How the grade is displayed (Moodle grade display type constant).
+    </ResponseField>
+    <ResponseField name="maxattempt" type="int">
+      Maximum number of attempts allowed (`0` = unlimited).
+    </ResponseField>
+    <ResponseField name="grademethod" type="int">
+      Attempt aggregation method (e.g. highest, average, first, last).
+    </ResponseField>
+    <ResponseField name="reviewmode" type="int">
+      Bitmask controlling when students may review their attempts.
+    </ResponseField>
+    <ResponseField name="revision" type="int">
+      Package revision counter used as a cache-buster.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+<ResponseField name="warnings" type="array">
+  One warning object per course that could not be accessed. The request succeeds even when warnings are present — the function never fails on an inaccessible course.
+
+  <Expandable title="Warning object fields">
+    <ResponseField name="item" type="string">
+      The item type that caused the warning (e.g. `"course"`).
+    </ResponseField>
+    <ResponseField name="itemid" type="int">
+      The ID of the inaccessible course.
+    </ResponseField>
+    <ResponseField name="warningcode" type="string">
+      Machine-readable warning code.
+    </ResponseField>
+    <ResponseField name="message" type="string">
+      Human-readable warning message.
+    </ResponseField>
+  </Expandable>
+</ResponseField>
+
+## Security note
+
+<Warning>
+  The `packageurl` field is only present in the response for users who hold the `moodle/course:manageactivities` capability (typically teachers and administrators). This mirrors the access control enforced by the pluginfile handler — students cannot download the raw ELPX source package.
+</Warning>
+
+## Example request
+
+```http
+POST {wwwroot}/webservice/rest/server.php
+Content-Type: application/x-www-form-urlencoded
+
+wstoken=<token>
+&wsfunction=mod_exelearning_get_exelearnings_by_courses
+&moodlewsrestformat=json
+&courseids[0]=42
+&courseids[1]=57
+```
+
+## Example response
+
+```json
+{
+  "exelearnings": [
+    {
+      "id": 12,
+      "coursemodule": 88,
+      "course": 42,
+      "name": "Introduction to HTML",
+      "intro": "<p>Complete this activity before the exam.</p>",
+      "introformat": 1,
+      "introfiles": [],
+      "timemodified": 1712000000,
+      "section": 2,
+      "visible": 1,
+      "groupmode": 0,
+      "groupingid": 0,
+      "gradeenabled": 1,
+      "grademodel": 0,
+      "grademax": 100.0,
+      "grademin": 0.0,
+      "gradepass": 50.0,
+      "gradedisplaytype": 1,
+      "maxattempt": 3,
+      "grademethod": 1,
+      "reviewmode": 6,
+      "revision": 4
+    }
+  ],
+  "warnings": []
+}
+```

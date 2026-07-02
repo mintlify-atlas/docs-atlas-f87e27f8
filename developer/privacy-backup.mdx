@@ -1,0 +1,129 @@
+---
+title: "Privacy, Backup, and File API in mod_exelearning"
+sidebarTitle: "Privacy & Backup"
+description: "GDPR privacy provider implementation, backup and restore coverage including attempts and grade-item mappings, and pluginfile access control."
+---
+
+`mod_exelearning` stores minimal personal data — only the attempt history table — and implements the full Moodle Privacy API to support GDPR data exports and erasure requests. Course backups capture the complete activity state including grade-item mappings and (optionally) attempt history, and the File API enforces per-area access control so students can consume content without being able to download the source package.
+
+## Privacy (GDPR)
+
+`classes/privacy/provider.php` implements three interfaces:
+
+| Interface | Purpose |
+|-----------|---------|
+| `core_privacy\local\metadata\provider` | Declares what personal data the plugin stores and which subsystems it feeds. |
+| `core_privacy\local\request\core_userlist_provider` | Reverse lookup — finds all users who have data in a given context. |
+| `core_privacy\local\request\plugin\provider` | Handles data export and deletion requests. |
+
+## Personal data stored
+
+The only user-data table is `exelearning_attempt` (DEC-0007 flat attempt history). `get_metadata()` declares it field-by-field:
+
+| Field | Meaning |
+|-------|---------|
+| `userid` | The student the attempt belongs to |
+| `attempt` | 1-based attempt number per user/activity |
+| `itemnumber` | 0 = overall, >0 = a gradable iDevice |
+| `rawscore` | Raw score |
+| `maxscore` | Max score |
+| `scaledscore` | `rawscore/maxscore` in 0..1 |
+| `status` | `completed` / `passed` / `failed` / `incomplete` |
+| `timecreated` / `timemodified` | Timestamps |
+
+<Note>
+  `sessiontoken` exists in the table but is **not exported** — it is a per-page-load
+  correlation token used to group auto-commits into a single attempt, not a
+  user-identifying value.
+</Note>
+
+## Data subsystem link
+
+The privacy metadata also declares a `core_grades` subsystem link because the plugin pushes each user's scores into the Moodle gradebook via `grade_update()` (`add_subsystem_link('core_grades', ...)`, `provider.php:63`). This ensures privacy tooling accounts for the gradebook data flow.
+
+## Deletion
+
+All three deletion entry points delete `exelearning_attempt` rows **and then recalculate the gradebook** so an erased user keeps no stale grade with no backing attempt (`clear_grades_for_users()`, `provider.php:81–95`).
+
+| Request | Provider method |
+|---------|----------------|
+| Delete all users in a context | `delete_data_for_all_users_in_context()` |
+| Delete one user across contexts | `delete_data_for_user()` |
+| Delete a set of users in one context | `delete_data_for_users()` |
+
+## Backup coverage
+
+`backup/moodle2/backup_exelearning_stepslib.php::define_structure()` covers:
+
+| Element | Backed up? | Conditional |
+|---------|-----------|-------------|
+| `exelearning` instance (all settings incl. `gradeenabled`, `grademodel`, `grademethod`, `gradepass`, `gradecat`, `maxattempt`, `reviewmode`, `teachermodevisible`) | Yes | Always |
+| `exelearning_grade_item` (structural package metadata) | Yes | Always — not gated by `userinfo` |
+| `exelearning_attempt` | Yes | **Only when `userinfo` is set** |
+| `intro` files (activity description) | Yes | Always |
+| `package` files (ELPX source) | Yes | Always |
+| `content` files (extracted package) | Yes | Always |
+| `gradesyncrev` | **No** | Deliberately omitted — restored copy re-scans on first view |
+| Moodle `grade_item` rows | **No** | Re-created by `grade_sync::sync()` on first view |
+
+<Note>
+  `gradesyncrev` is intentionally excluded from the backup. Leaving it out forces the
+  restored copy to re-scan its package once on first view, rebuilding the gradebook
+  columns from the actual package contents rather than trusting a potentially stale
+  sync marker.
+</Note>
+
+## Restore specifics
+
+<Steps>
+  <Step title="User id remapping">
+    `usermodified` is remapped to a valid local user or falls back to `0`; `attempt.userid` is remapped via the user mapping table.
+  </Step>
+  <Step title="gradecat cross-course reset">
+    `gradecat` is a course-specific `grade_categories.id` (DEC-0034). It survives a same-course duplicate but not a cross-course restore. The restore step keeps it only if the category exists in the destination course; otherwise it resets to `0` (the course top category). Per-iDevice items are re-parented on first view by `exelearning_apply_grade_category()` → `grade_item_manager::apply_category()` (B4, DEC-0044).
+  </Step>
+  <Step title="Moodle grade items re-created, not restored">
+    The plugin's own `exelearning_grade_item` rows are restored, but the actual Moodle gradebook `grade_item` columns are **not** restored directly. They are re-created on first view when `grade_sync::sync()` runs, paired with the deliberately omitted `gradesyncrev`.
+  </Step>
+  <Step title="File re-attachment">
+    Related files (`intro`, `package`, `content`) are re-attached after the tables are restored in `after_execute()`.
+  </Step>
+</Steps>
+
+<Tip>
+  The round-trip backup/restore test lives at `tests/backup_restore_test.php`
+  (`@covers \backup_exelearning_activity_task`).
+</Tip>
+
+## File API areas
+
+The plugin uses three file areas:
+
+| Area | itemid scheme | Who can fetch | Notes |
+|------|---------------|---------------|-------|
+| `content` | `content/{revision}` | Any viewer with `mod/exelearning:view` | Extracted site; SVG served inline; revision-based cache busting. |
+| `package` | `package/0` (itemid = revision) | **Teachers only** (`moodle/course:manageactivities`) | Raw ELPX source — students cannot download it. |
+| `intro` | core-managed | Any viewer | Activity description, handled by core. |
+
+## Pluginfile access control
+
+`exelearning_pluginfile()` in `lib.php:494` enforces access in layers:
+
+<Steps>
+  <Step title="Context check">
+    Require `CONTEXT_MODULE`; refuse otherwise.
+  </Step>
+  <Step title="Course login">
+    `require_course_login($course, true, $cm)`.
+  </Step>
+  <Step title="View capability">
+    `require_capability('mod/exelearning:view', $context)` — applies to all areas.
+  </Step>
+  <Step title="Package area gate (teachers only)">
+    `content` files are served to any viewer. The `package` area additionally requires `require_capability('moodle/course:manageactivities', $context)` — students can render the extracted activity but are blocked from downloading the authoring source.
+  </Step>
+</Steps>
+
+SVG files in the `content` area are served inline (`$options['dontforcesvgdownload'] = true`) so eXeLearning v4 icons render correctly rather than triggering a download — the same flag used by `mod_scorm`.
+
+Revision-based cache busting is automatic: the `content` URL embeds `{revision}`; bumping `revision` on save invalidates old URLs, making a long cache lifetime safe.

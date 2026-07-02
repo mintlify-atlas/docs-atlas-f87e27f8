@@ -1,0 +1,98 @@
+---
+title: "Grading and Gradebook Columns in mod_exelearning"
+sidebarTitle: "Grading"
+description: "Understand how mod_exelearning registers gradebook columns per iDevice, choose between PER-ITEM and OVERALL models, and configure attempt aggregation."
+---
+
+`mod_exelearning` integrates directly with the Moodle gradebook, translating the interactive exercises inside an eXeLearning package into real gradebook columns. Unlike a plain SCORM package that always reports a single combined score, this activity can give each exercise its own independent grade column. This guide explains the two grading models, how gradable iDevices are detected, how multiple attempts are aggregated, and how grade-based completion works.
+
+## Two grading models
+
+The **Gradebook columns** setting (`grademodel`) controls how the activity reports to the gradebook. You must choose one of two mutually exclusive models per activity instance.
+
+| Model | Setting value | Gradebook columns | Best when… |
+|---|---|---|---|
+| **Per iDevice** (default) | `EXELEARNING_GRADEMODEL_PERITEM` (1) | One column per gradable iDevice (`itemnumber` 1–100) | Each exercise is a distinct graded task and you want per-exercise visibility |
+| **Overall** | `EXELEARNING_GRADEMODEL_OVERALL` (0) | A single aggregated column (`itemnumber = 0`) | You only care about one combined score for the whole resource (SCORM-style) |
+
+**Per iDevice** is the default because it provides the granularity that sets this activity apart from a plain SCORM package: a resource with three quizzes records three independent grades rather than a single blended number.
+
+**Overall** is the better choice when the individual exercises are practice material and you want to grade the resource as a whole — for example, a revision lesson where only the final score matters.
+
+<Tip>
+  You can switch between the two models at any time from the activity settings form. Switching removes the columns that no longer apply and creates the ones that do. All existing grade history is preserved — no attempt data is ever discarded when you change the model.
+</Tip>
+
+## How gradable iDevices are detected
+
+When a package is saved or re-uploaded, the plugin scans the package's `content.xml` for iDevices that carry an `isScorm > 0` flag. This flag is set by the iDevice author in eXeLearning itself — the plugin does not decide which iDevice types are gradable; it reads what the package declares.
+
+The supported gradable iDevice types are:
+
+```
+trueorfalse, guess, quick-questions, quick-questions-multiple-choice,
+quick-questions-video, dragdrop, complete, classify, relate, sort,
+identify, discover, crossword, word-search, puzzle, trivial,
+az-quiz-game, mathproblems, mathematicaloperations, scrambled-list
+```
+
+Any other content — text, images, plain pages, or unsupported activity types — is silently ignored and produces no gradebook column.
+
+Each detected iDevice is identified by a stable **object ID** (`objectid`) taken from the `content.xml`. This means a column belongs to a specific exercise, not to its position on a page — so reordering pages does not reassign grades, and a removed-then-re-added iDevice keeps its original column and history.
+
+<Info>
+  The plugin supports up to **100 gradable iDevices per activity instance**. If a package contains more than 100, the extra items are not registered as gradebook columns (a developer-level warning is logged). Packages with more than 100 gradable exercises are uncommon in practice.
+</Info>
+
+## Attempt aggregation
+
+Every time a student works through the activity, their results are stored as an **attempt**. When a student has submitted more than once, the **Attempts grading method** (`grademethod`) decides which value is sent to the gradebook:
+
+| Method | Constant value | Behaviour |
+|---|---|---|
+| **Highest attempt** *(default)* | `GRADE_HIGHEST` (0) | Reports the maximum score across all attempts |
+| **Average of attempts** | `GRADE_AVERAGE` (1) | Reports the mean of all attempt scores |
+| **First attempt** | `GRADE_FIRST` (2) | Reports only the first attempt |
+| **Last attempt** | `GRADE_LAST` (3) | Reports only the most recent attempt |
+| **Lowest attempt** | `GRADE_LOWEST` (4) | Reports the minimum score across all attempts |
+
+Scores are stored as a scaled value (0–1) internally and multiplied by `grademax` when written to the gradebook. For example, a student who scores 8 out of 10 on an iDevice with `grademax = 100` receives a gradebook value of 80.
+
+## Grade to pass and activity completion
+
+Set **Grade to pass** (`gradepass`) to a non-zero value to enable SCORM-style pass-based completion. When combined with Moodle's **Require passing grade** completion condition (under the activity's completion settings), the activity is automatically marked complete as soon as the student reaches the passing grade.
+
+The plugin also exposes a **custom completion rule** (`completionstatusrequired`) that completes the activity when the student's attempt reaches a required status:
+
+- **Passed** — the attempt was scored at or above the grade to pass
+- **Completed** — the student finished the activity regardless of score
+- **Passed or completed** — either of the above
+
+This mirrors the completion behaviour of `mod_scorm` and can be combined with grade-based completion for fine-grained control.
+
+<Info>
+  `gradepass` must lie within `[grademin, grademax]` (when non-zero), and `grademin` must not exceed `grademax`. The form validates these constraints and shows an error if they are violated — otherwise "require passing grade" completion would be permanently unreachable.
+</Info>
+
+## When grading is disabled
+
+Uncheck **Graded?** (`gradeenabled`) to turn off all grading for an activity instance. When disabled:
+
+- No gradebook columns are created or updated
+- The attempts report is not shown
+- The activity behaves like a plain content resource
+- All other grade and attempt settings are greyed out in the form
+
+Attempt history stored in the database is **preserved** even while grading is disabled. Re-enabling grading restores full gradebook integration from the existing attempt data.
+
+## Grade display types
+
+The **Grade display** (`gradedisplaytype`) setting controls how each column's value is presented in the gradebook and in student views. It does **not** affect how grades are stored — Moodle always stores a raw numeric value.
+
+| Option | Display format |
+|---|---|
+| **Default** | Inherits the display type from the course gradebook settings |
+| **Real** | Shows the raw numeric score (e.g. `78.00`) |
+| **Percentage** | Shows the score as a percentage of `grademax` (e.g. `78 %`) |
+| **Letter** | Maps the score to a letter grade (e.g. `B+`) using the course's letter-grade boundaries |
+| **Real and percentage** | Shows both the raw score and the percentage side by side (e.g. `78.00 (78 %)`) |
